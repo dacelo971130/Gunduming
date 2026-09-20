@@ -22,6 +22,16 @@ A **selectable weapon loadout** the pilot switches by voice, key or click.
 | Voice shapes | "switch to cannon" · "cannon" · "missiles" / "missile pod" · "blade" / "sword" · "rifle" · "next weapon" · "previous weapon" — REFLEX path. Anything fuzzier goes NEURAL via a `switch_weapon` tool. |
 | Demo safety | Unchanged and non-negotiable: no API key/no network still runs; nothing throws on unsupported browsers; every voice command has a key. |
 
+## Pilot decisions added 20:05 (override earlier IP rules — stage demo only)
+
+| Thing | Value |
+|---|---|
+| MANTIS-01 look | **Zaku-style** green mass-production mech: single glowing pink monoeye in a horizontal visor slit on a rounded helmet head, right shoulder spiked pauldron, left shoulder slab shield, tubular skirt/"power cable" bundles at waist and calves, heavy drum-magazine machine gun, heat-hawk on the hip. Dull olive-green PBR with darker green limbs, chipped edges, unit numbers. Keep the codename MANTIS-01. |
+| CRIMSON-01 look | The **red ace variant** of the same lineage: same monoeye family but sleeker, crimson/wine-red with dark grey trim, a commander fin antenna on the head, no shoulder spike (shield on left only), longer legs, brighter thrusters, trailing energy wake. ~1.3× the grunt's presence, moves faster. |
+| AETHER FRAME (player) look | A **Gundam-style hero mech**: white torso/limbs, blue chest, red chest-vents and feet, yellow V-fin antenna on the head, twin green camera eyes, face vents, backpack with twin beam-saber hilts, beam rifle in the right hand, slab shield on the left forearm. Built procedurally in three.js. |
+| Opening reveal | New boot beat **REVEAL** (after REACTOR ignition, before SUBSYSTEMS): a ~6 s third-person camera in the lunar hangar — starts at the feet, tilts up the body, orbits past the shield and rifle to the face as the eyes light up, then pushes into the open cockpit hatch and cuts to the cockpit. Component `MechReveal({ onDone })` exported from `src/components/viewport/MechReveal.tsx` (3D engineer); the integrator wires it into `BootStage`. Space skips it. |
+| In-cockpit self view | Unchanged: the pilot sees their own forearms/weapon at the bottom of the canopy — these must now match the AETHER FRAME's white/blue/red styling. |
+
 ## Ownership (touch only your own files)
 
 | Specialist | Files | Notes |
