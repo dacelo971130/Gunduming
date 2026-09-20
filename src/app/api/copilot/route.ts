@@ -46,7 +46,9 @@ const PlayerSchema = z.object({
   stance: StanceSchema,
   bearing: z.number(),
   special: z.number(),
-  weapon: z.enum(["RIFLE", "CANNON", "MISSILE", "BLADE"]).default("RIFLE"),
+  weapon: z.enum(["RIFLE", "CANNON", "MISSILE", "BLADE", "INCENDIARY", "NUKE", "FLEET_CANNON"]).default("RIFLE"),
+  ammo: z.record(z.string(), z.number()).default({}),
+  weaponReadyAt: z.record(z.string(), z.number()).default({}),
 });
 
 const EnemyKindSchema = z.enum(["MANTIS", "CRIMSON"]);
@@ -114,6 +116,9 @@ const GameSnapshotSchema = z.object({
 });
 
 const AdviceTriggerSchema = z.enum([
+  "TARGET_OFF_NOSE",
+  "NUKE_WINDOW",
+  "FLEET_WINDOW",
   "SURROUNDED",
   "LOW_ARMOR",
   "BOSS_FLANKING",

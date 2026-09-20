@@ -41,7 +41,10 @@ export type Subsystem = (typeof SUBSYSTEMS)[number];
 
 /* ------------------------------------------------------------- weapons */
 
-export type WeaponId = "RIFLE" | "CANNON" | "MISSILE" | "BLADE";
+export type WeaponId = "RIFLE" | "CANNON" | "MISSILE" | "BLADE" | "INCENDIARY" | "NUKE" | "FLEET_CANNON";
+
+/** HELD = the mech's own weapon · ORDNANCE = limited-ammo heavy munition · SUPPORT = off-map fire call. */
+export type WeaponKind = "HELD" | "ORDNANCE" | "SUPPORT";
 
 export interface WeaponSpec {
   id: WeaponId;
@@ -61,14 +64,30 @@ export interface WeaponSpec {
   splashDeg: number;
   /** One-line flavour for the HUD and for ECHO-01's advice. */
   role: string;
+  kind: WeaponKind;
+  /** Rounds available per mission; `null` = unlimited. Tracked in `player.ammo`. */
+  ammo: number | null;
+  /** Reload/cooldown between uses, ms; 0 = none. Tracked in `player.weaponReadyAt`. */
+  cooldownMs: number;
+  /** Safety minimum range in meters (NUKE); firing inside it is denied. */
+  minRange?: number;
+  /** Seconds-scale delay between the call and impact (FLEET_CANNON shells fall from orbit). */
+  delayMs?: number;
+  /** Damage over time applied to everything hit: `dps` for `ms` (INCENDIARY). */
+  burn?: { dps: number; ms: number };
+  /** For SUPPORT/ORDNANCE salvos: number of shells/rounds per use. */
+  rounds?: number;
 }
 
 /** The AETHER FRAME loadout. Order = cycling order for "next/previous weapon". */
 export const WEAPONS: readonly WeaponSpec[] = [
-  { id: "RIFLE",   name: "LINEAR RIFLE",  tag: "LR",  damage: 22, heat: 12, energy: 8,  maxRange: null, splashDeg: 0,  role: "Balanced. Always ready." },
-  { id: "CANNON",  name: "HEAVY CANNON",  tag: "HC",  damage: 44, heat: 30, energy: 18, maxRange: null, splashDeg: 8,  role: "Slow, armor-breaking. Best on exposed weak points." },
-  { id: "MISSILE", name: "MISSILE POD",   tag: "MSL", damage: 9,  heat: 18, energy: 16, maxRange: 1100, splashDeg: 30, role: "Six-round salvo. Hits everything in the cone." },
-  { id: "BLADE",   name: "PLASMA BLADE",  tag: "PB",  damage: 60, heat: 8,  energy: 0,  maxRange: 260,  splashDeg: 0,  role: "Melee. Devastating inside 260 meters, useless beyond." },
+  { id: "RIFLE",   name: "LINEAR RIFLE",  tag: "LR",  kind: "HELD", ammo: null, cooldownMs: 0, damage: 22, heat: 12, energy: 8,  maxRange: null, splashDeg: 0,  role: "Balanced. Always ready." },
+  { id: "CANNON",  name: "HEAVY CANNON",  tag: "HC",  kind: "HELD", ammo: null, cooldownMs: 0, damage: 44, heat: 30, energy: 18, maxRange: null, splashDeg: 8,  role: "Slow, armor-breaking. Best on exposed weak points." },
+  { id: "MISSILE", name: "MISSILE POD",   tag: "MSL", kind: "HELD", ammo: null, cooldownMs: 0, damage: 9,  heat: 18, energy: 16, maxRange: 1100, splashDeg: 30, rounds: 6, role: "Six-round salvo. Hits everything in the cone." },
+  { id: "BLADE",   name: "PLASMA BLADE",  tag: "PB",  kind: "HELD", ammo: null, cooldownMs: 0, damage: 60, heat: 8,  energy: 0,  maxRange: 260,  splashDeg: 0,  role: "Melee. Devastating inside 260 meters, useless beyond." },
+  { id: "INCENDIARY", name: "INCENDIARY SHELLS", tag: "INC", kind: "ORDNANCE", ammo: 4, cooldownMs: 4000, damage: 12, heat: 22, energy: 14, maxRange: 1000, splashDeg: 25, burn: { dps: 8, ms: 6000 }, role: "Sets the cone on fire. Everything hit burns for six seconds. Four shells." },
+  { id: "NUKE", name: "TACTICAL NUKE", tag: "NUK", kind: "ORDNANCE", ammo: 1, cooldownMs: 0, damage: 400, heat: 45, energy: 30, maxRange: null, minRange: 450, splashDeg: 90, role: "One warhead. Wipes everything in front of you. Never inside 450 meters — the blast comes back." },
+  { id: "FLEET_CANNON", name: "FLEET CANNON SUPPORT", tag: "FLT", kind: "SUPPORT", ammo: null, cooldownMs: 45000, damage: 90, heat: 0, energy: 0, maxRange: null, splashDeg: 35, delayMs: 3000, rounds: 3, role: "Calls the battleship in orbit. Three shells, three seconds out, forty-five second reload." },
 ] as const;
 
 export const DEFAULT_WEAPON: WeaponId = "RIFLE";

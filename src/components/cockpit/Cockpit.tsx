@@ -86,8 +86,8 @@ export function Cockpit({ viewport, voiceBar }: CockpitProps) {
   const radarH = Math.round(Math.min(col + 26, columnH * 0.42));
 
   // Left column budget: pilot and system are content-sized, weapons takes the rest.
-  const pilotH = 150;
-  const systemH = columnH >= 720 ? 182 : 168;
+  const pilotH = columnH >= 720 ? 150 : 132;
+  const systemH = columnH >= 720 ? 182 : 164;
   const weaponsH = columnH - pilotH - systemH - G * 2;
   const compact = weaponsH < 340;
 

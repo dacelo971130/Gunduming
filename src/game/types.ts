@@ -33,6 +33,10 @@ export interface Player {
   bearing: number;     // where the mech is facing, degrees, 0 = north
   special: number;     // 0..100 charge for the finishing move
   weapon: WeaponId;    // currently selected weapon (see WEAPONS in config.ts)
+  /** Rounds left for limited-ammo weapons (WEAPONS[].ammo !== null). Missing = full. */
+  ammo: Partial<Record<WeaponId, number>>;
+  /** ms timestamp when a cooldown weapon may fire again. Missing = ready. */
+  weaponReadyAt: Partial<Record<WeaponId, number>>;
 }
 
 /* ----------------------------------------------------------------- enemies */
@@ -69,6 +73,9 @@ export interface Enemy {
   spawnAt: number;
   /** CRIMSON only: which adaptation the ace has locked onto. */
   adaptation?: BossAdaptation | null;
+  /** Incendiary: burning until this ms timestamp, taking `burnDps` per second (enemyAI applies it). */
+  burningUntil?: number;
+  burnDps?: number;
 }
 
 export type BossAdaptation =

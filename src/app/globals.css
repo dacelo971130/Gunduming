@@ -527,3 +527,48 @@ body {
   .animate-blink,
   .animate-breathe { animation: none !important; }
 }
+
+/* Ordnance / support cards in the weapon selector, and the NUKE safety cover. */
+.weapon-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(0, 0, 0, 0.3));
+  border: 1px solid rgba(134, 207, 159, 0.1);
+  border-radius: 1px;
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms;
+}
+.weapon-card:hover { border-color: rgba(134, 207, 159, 0.3); }
+.weapon-card[data-selected="true"] {
+  border-color: rgba(134, 207, 159, 0.55);
+  background: linear-gradient(180deg, rgba(134, 207, 159, 0.09), rgba(134, 207, 159, 0.02));
+  box-shadow: inset 0 0 12px rgba(134, 207, 159, 0.08);
+}
+.weapon-card[data-hazard="true"] {
+  border-color: rgba(214, 164, 70, 0.35);
+}
+.weapon-card[data-hazard="true"][data-selected="true"] {
+  border-color: var(--color-mfd-amber);
+  background: linear-gradient(180deg, rgba(214, 164, 70, 0.1), rgba(217, 80, 90, 0.05));
+  box-shadow: inset 0 0 12px rgba(214, 164, 70, 0.12);
+}
+.hazard-stripe {
+  background: repeating-linear-gradient(-45deg, var(--color-mfd-amber) 0 5px, #0a0805 5px 10px);
+  opacity: 0.75;
+}
+.mfd-divider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 1px;
+}
+.mfd-divider:empty { gap: 0; }
+.mfd-divider::before,
+.mfd-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-mfd-phosphor-faint);
+}

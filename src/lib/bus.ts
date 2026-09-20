@@ -5,7 +5,8 @@ export type AudioCue =
   | "WAKE" | "BOOT_TICK" | "BOOT_DONE" | "PANEL_ON" | "BEEP" | "DENY"
   | "LOCK" | "FIRE" | "IMPACT" | "PLAYER_HIT" | "EXPLOSION" | "SHIELD"
   | "BOOST" | "ALARM" | "SPECIAL" | "ANALYZE" | "VICTORY"
-  | "WEAPON_SWITCH" | "FIRE_CANNON" | "FIRE_MISSILE" | "FIRE_BLADE";
+  | "WEAPON_SWITCH" | "FIRE_CANNON" | "FIRE_MISSILE" | "FIRE_BLADE"
+  | "FIRE_INCENDIARY" | "FIRE_NUKE" | "NUKE_ARM" | "FLEET_CALL" | "FLEET_IMPACT" | "BURNING";
 
 export type BgmTrack = "NONE" | "AMBIENT" | "BRIEFING" | "COMBAT" | "BOSS" | "VICTORY";
 
@@ -36,6 +37,12 @@ export interface BusEvents {
   /** Player took damage. */
   "fx:playerHit": { amount: number; fromBearing: number };
   "fx:special": { targetId: string | null };
+  /** Off-map fire support: shells called at `atMs`, land at `impactAtMs` around the target's last position. */
+  "fx:fleetCall": { targetId: string | null; impactAtMs: number; rounds: number };
+  /** Fleet shells actually landing (one event per use, all rounds). */
+  "fx:fleetImpact": { targetId: string | null; killed: string[] };
+  /** Nuclear detonation at the target — whiteout, shockwave, mushroom, long shake. */
+  "fx:nuke": { targetId: string | null; killed: string[] };
   "audio:cue": { cue: AudioCue };
   "audio:bgm": { track: BgmTrack };
   "phase:changed": { phase: Phase; previous: Phase };

@@ -33,6 +33,8 @@ const initialPlayer: Player = {
   hp: 100, maxHp: 100, armor: 100, energy: 98,
   boost: 92, heat: 0, stance: "NEUTRAL", bearing: 0, special: 0,
   weapon: DEFAULT_WEAPON,
+  ammo: {},
+  weaponReadyAt: {},
 };
 
 const initialMission: Mission = {
