@@ -324,6 +324,12 @@ function cueVictory(ctx: AudioContext, dest: AudioNode, t0: number): void {
 }
 
 const BUILDERS: Record<AudioCue, CueBuilder> = {
+  // Weapon-loadout cues: placeholders mapped onto existing sounds until the
+  // weapons engineer synthesizes dedicated ones (see docs/REDESIGN.md).
+  WEAPON_SWITCH: cueBeep,
+  FIRE_CANNON: cueFire,
+  FIRE_MISSILE: cueFire,
+  FIRE_BLADE: cueFire,
   WAKE: cueWake,
   BOOT_TICK: cueBootTick,
   BOOT_DONE: cueBootDone,

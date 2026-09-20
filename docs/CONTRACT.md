@@ -1,5 +1,7 @@
 # AETHER FRAME — Build Contract
 
+> **2026-09-20 redesign:** `docs/REDESIGN.md` amends this file (WebGL viewport, circular canopy, weapon loadout, new ownership map). Where the two disagree, REDESIGN.md wins.
+
 A voice-controlled AI co-pilot that turns the browser into a living mecha cockpit.
 Several agents build this in parallel. **This file is the integration surface. Do not edit it.**
 

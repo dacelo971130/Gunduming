@@ -4,7 +4,8 @@ import type { CommandResult, GameCommand, LogLevel, Phase, WeaponId } from "@/ga
 export type AudioCue =
   | "WAKE" | "BOOT_TICK" | "BOOT_DONE" | "PANEL_ON" | "BEEP" | "DENY"
   | "LOCK" | "FIRE" | "IMPACT" | "PLAYER_HIT" | "EXPLOSION" | "SHIELD"
-  | "BOOST" | "ALARM" | "SPECIAL" | "ANALYZE" | "VICTORY";
+  | "BOOST" | "ALARM" | "SPECIAL" | "ANALYZE" | "VICTORY"
+  | "WEAPON_SWITCH" | "FIRE_CANNON" | "FIRE_MISSILE" | "FIRE_BLADE";
 
 export type BgmTrack = "NONE" | "AMBIENT" | "BRIEFING" | "COMBAT" | "BOSS" | "VICTORY";
 
