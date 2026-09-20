@@ -1,4 +1,4 @@
-import type { CommandResult, GameCommand, LogLevel, Phase } from "@/game/types";
+import type { CommandResult, GameCommand, LogLevel, Phase, WeaponId } from "@/game/types";
 
 /** One-shot sound effects. The audio module owns the synthesis. */
 export type AudioCue =
@@ -19,8 +19,10 @@ export interface BusEvents {
   "ai:spoken": { text: string };
   /** A command was executed by any path. */
   "cmd:executed": { command: GameCommand; result: CommandResult };
-  /** Weapon fired at a target — the viewport draws the tracer. */
-  "fx:fire": { targetId: string | null; mode: string };
+  /** Weapon fired at a target — the viewport draws the tracer/shell/salvo/slash per weapon. */
+  "fx:fire": { targetId: string | null; mode: string; weapon?: WeaponId };
+  /** Pilot switched weapons — HUD selector, viewport arm swap, audio cue. */
+  "weapon:changed": { weapon: WeaponId; previous: WeaponId };
   /** Something took damage — viewport draws the burst. */
   "fx:hit": { targetId: string; amount: number; killed: boolean };
   /** Player took damage. */

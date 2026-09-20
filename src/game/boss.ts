@@ -49,9 +49,11 @@ function findBoss(): Enemy | null {
 function beginFlank(enemy: Enemy, now: number): void {
   if (!boss) return;
   const store = game.get();
-  const magnitude = 70 + Math.random() * 50; // 70..120 degrees
+  // Swing to the far edge of the canopy on the opposite side (the glass shows
+  // ±35° and the pilot can't turn — going behind would make the ace vanish).
+  const magnitude = 26 + Math.random() * 7; // 26..33 degrees
   const sign = enemy.bearing >= 0 ? -1 : 1; // swing to the opposite side for a clean flank
-  const targetBearing = Math.max(-179, Math.min(179, sign * magnitude));
+  const targetBearing = sign * magnitude;
   boss.flankStartBearing = enemy.bearing;
   boss.flankTargetBearing = targetBearing;
   boss.flankSwingUntil = now + FLANK_SWING_MS + Math.random() * 500;
@@ -148,7 +150,8 @@ export function tickBoss(dt: number): void {
       say(`Direct hit! ${enemy.codename}'s stabilizers are exposed — fire now!`, "urgent");
     } else if (damageSinceLast > 0 && Math.random() < 0.3) {
       // A lighter hit sometimes provokes a quick evasive jink.
-      store.updateEnemy(enemy.id, { bearing: Math.max(-179, Math.min(179, enemy.bearing + (Math.random() < 0.5 ? -1 : 1) * (15 + Math.random() * 15))) });
+      const jinked = enemy.bearing + (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 10);
+      store.updateEnemy(enemy.id, { bearing: Math.max(-33, Math.min(33, jinked)) });
     }
     boss.lastHp = enemy.hp;
 

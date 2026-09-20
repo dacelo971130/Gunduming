@@ -29,7 +29,7 @@ function notifyMuteChange(): void {
   muteListeners.forEach((cb) => cb());
 }
 
-/** Subscribe to any change in echo-guard or manual mute state. */
+/** Subscribe to any change in echo-guard, manual mute, or push-to-talk state. */
 export function onMuteChange(cb: Listener): () => void {
   muteListeners.add(cb);
   return () => muteListeners.delete(cb);
@@ -53,6 +53,49 @@ export function setManualMuted(next: boolean): void {
   if (manualMuted === next) return;
   manualMuted = next;
   notifyMuteChange();
+}
+
+/* ------------------------------------------------------ push-to-talk state */
+
+/**
+ * The venue is loud, so push-to-talk (hold `M`, or `Shift`, to open the mic)
+ * is the default mode — ambient/crowd noise can never fire a command while
+ * the key isn't held. Always-on listening is still available via a toggle.
+ */
+let pttMode = true;
+let pttHeld = false;
+
+export function isPttMode(): boolean {
+  return pttMode;
+}
+
+export function setPttMode(next: boolean): void {
+  if (pttMode === next) return;
+  pttMode = next;
+  if (!pttMode) pttHeld = false; // leaving PTT mode can't leave the mic "stuck held"
+  notifyMuteChange();
+}
+
+export function togglePttMode(): boolean {
+  setPttMode(!pttMode);
+  return pttMode;
+}
+
+export function isPttHeld(): boolean {
+  return pttHeld;
+}
+
+/** Driven by VoiceLink's key handlers (press/release, blur, visibilitychange). */
+export function setPttHeld(next: boolean): void {
+  if (pttHeld === next) return;
+  pttHeld = next;
+  notifyMuteChange();
+}
+
+/** True when the mic should actually be capturing audio right now. */
+export function isMicOpen(): boolean {
+  if (manualMuted || echoMuted) return false;
+  return !pttMode || pttHeld;
 }
 
 /** Call right before a TTS line starts playing. */
@@ -117,15 +160,59 @@ async function runNeural(text: string): Promise<void> {
   }
 }
 
+/* ------------------------------------------------------ noise rejection */
+
+/** Below this (only when the browser actually reports a confidence), the
+ *  whole transcript is dropped before it ever reaches reflex/neural matching. */
+const CONFIDENCE_THRESHOLD = 0.35;
+/** Same reflex command can't fire twice from one utterance's worth of noise. */
+const REFLEX_DEBOUNCE_MS = 1200;
+/** "Reasonably short" — in STANDBY, saying almost anything this short wakes ECHO. */
+const STANDBY_WAKE_MAX_WORDS = 8;
+
+const FILLER_WORDS = new Set(["uh", "um", "ah", "erm", "hmm", "huh", "eh", "uhh", "umm"]);
+
+let lastReflexKey = "";
+let lastReflexAt = 0;
+
+/** Many Web Speech implementations report 0 when confidence isn't actually
+ *  known — only treat it as "low confidence" when a real (nonzero) value
+ *  was reported below the threshold, so unsupported browsers aren't punished. */
+function isLowConfidence(confidence?: number): boolean {
+  return typeof confidence === "number" && confidence > 0 && confidence < CONFIDENCE_THRESHOLD;
+}
+
+/** Garbage: no vowel-bearing content, too short to be a word, or pure filler
+ *  ("uh", "um", …). Used only as a last resort before escalating to the LLM —
+ *  a real reflex phrase always wins first, however short. */
+function looksLikeGarbage(text: string): boolean {
+  const norm = text
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!norm) return true;
+  if (norm.length < 3) return true;
+  if (!/[aeiou]/.test(norm)) return true;
+  const tokens = norm.split(" ").filter(Boolean);
+  if (tokens.length > 0 && tokens.every((t) => FILLER_WORDS.has(t))) return true;
+  return false;
+}
+
 /* ----------------------------------------------------------------- intake */
 
 /**
  * Process one heard/typed line of pilot speech: log it, run it through the
  * echo guard, wake-word gate, reflex matcher, and (on a miss) the neural
  * fallback. `bypassEchoGuard` is set by the typed-command path since typed
- * text can never be an echo of ECHO-01's own voice.
+ * text can never be an echo of ECHO-01's own voice. `confidence` (when the
+ * recognizer reports one) gates out low-confidence noise before it can ever
+ * fire a reflex or reach the LLM.
  */
-export function processHeardText(rawText: string, opts: { bypassEchoGuard?: boolean } = {}): void {
+export function processHeardText(
+  rawText: string,
+  opts: { bypassEchoGuard?: boolean; confidence?: number } = {},
+): void {
   const text = rawText.trim();
   if (!text) return;
   const s = game.get();
@@ -137,19 +224,36 @@ export function processHeardText(rawText: string, opts: { bypassEchoGuard?: bool
   }
 
   if (s.phase === "STANDBY") {
-    if (matchWakeWord(text)) {
+    // Standing at a black screen, almost anything short means "start" — a
+    // missed wake word costs the whole demo, a false wake costs nothing.
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    if (matchWakeWord(text) || (wordCount > 0 && wordCount <= STANDBY_WAKE_MAX_WORDS)) {
       s.setPhase("WAKE");
       say("WAKE");
     }
     return;
   }
 
+  // Once the cockpit is up, crowd noise must never fire (or misfire) a
+  // command — reject anything the recognizer itself flags as unsure.
+  if (isLowConfidence(opts.confidence)) return;
+
   const reflexCmd = matchReflex(text);
   if (reflexCmd) {
+    const key = JSON.stringify(reflexCmd);
+    const now = Date.now();
+    if (key === lastReflexKey && now - lastReflexAt < REFLEX_DEBOUNCE_MS) return;
+    lastReflexKey = key;
+    lastReflexAt = now;
     s.setAiStatus("THINKING");
     setTimeout(() => runCommand(reflexCmd, "REFLEX"), 30);
     return;
   }
+
+  // No reflex match — never escalate obvious noise ("uh", stray consonants,
+  // sub-3-character scraps) to the LLM. Drop it silently; a repeated
+  // "Say again, Pilot." for every cough in the crowd is worse than nothing.
+  if (looksLikeGarbage(text)) return;
 
   void runNeural(text);
 }

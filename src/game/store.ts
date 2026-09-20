@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { SUBSYSTEMS, type Subsystem } from "@/lib/config";
+import { DEFAULT_WEAPON, SUBSYSTEMS, type Subsystem } from "@/lib/config";
 import { bus } from "@/lib/bus";
 import type {
   AiStatus,
@@ -22,7 +22,7 @@ import type {
 
 const ACTIONS: CommandAction[] = [
   "LOCK_TARGET", "ATTACK", "DEFEND", "EVADE", "BOOST",
-  "RETREAT", "ANALYZE", "SCAN", "STATUS_REPORT", "FIRE_SPECIAL", "NONE",
+  "RETREAT", "ANALYZE", "SCAN", "STATUS_REPORT", "FIRE_SPECIAL", "SWITCH_WEAPON", "NONE",
 ];
 
 function emptyCounts(): Record<CommandAction, number> {
@@ -32,6 +32,7 @@ function emptyCounts(): Record<CommandAction, number> {
 const initialPlayer: Player = {
   hp: 100, maxHp: 100, armor: 100, energy: 98,
   boost: 92, heat: 0, stance: "NEUTRAL", bearing: 0, special: 0,
+  weapon: DEFAULT_WEAPON,
 };
 
 const initialMission: Mission = {

@@ -76,7 +76,7 @@ export function attachKeyboardFallback(opts: KeyboardHandlerOptions): () => void
       case "x":
         opts.onCommand({ action: "FIRE_SPECIAL" });
         break;
-      case "m":
+      case "n":
         opts.onToggleMute();
         break;
       case "/":

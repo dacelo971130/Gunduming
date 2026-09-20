@@ -93,9 +93,11 @@ Every command has a key, because microphones fail in front of an audience.
 | `L` | lock nearest | | `S` | scan |
 | `R` | lock the red ace | | `T` | status report |
 | `F` | attack | | `X` | special |
-| `D` | defend | | `M` | mute microphone |
+| `D` | defend | | `M` (hold) | push-to-talk: hold to speak, release to send |
 | `E` | evade | | `/` | type a command instead |
-| `B` | boost | | `1`–`7` | jump to a phase (rehearsal) |
+| `B` | boost | | `N` | mute microphone |
+| | | | `Ctrl+V` | toggle push-to-talk / always-on listening |
+| | | | `1`–`7` | jump to a phase (rehearsal) |
 | | | | `0` | reset the demo |
 
 ## Demo flow — about five minutes

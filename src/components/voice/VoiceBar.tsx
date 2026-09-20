@@ -12,7 +12,15 @@ import { useEffect, useRef, useState } from "react";
 import { useGame } from "@/game/store";
 import { bus } from "@/lib/bus";
 import type { CommandAction, CommandSource } from "@/game/types";
-import { isManualMuted, onMuteChange, processTypedCommand, toggleManualMute } from "@/voice/pipeline";
+import {
+  isManualMuted,
+  isPttHeld,
+  isPttMode,
+  onMuteChange,
+  processTypedCommand,
+  toggleManualMute,
+  togglePttMode,
+} from "@/voice/pipeline";
 
 const STATE_LABEL_COLOR: Record<string, string> = {
   LISTENING: "text-hud-green",
@@ -64,6 +72,8 @@ export function VoiceBar() {
   const transcript = useGame((s) => s.transcript);
 
   const [manualMuted, setManualMutedState] = useState(false);
+  const [pttMode, setPttModeState] = useState(true);
+  const [pttHeld, setPttHeldState] = useState(false);
   const [hintOpen, setHintOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -74,7 +84,13 @@ export function VoiceBar() {
 
   useEffect(() => {
     setManualMutedState(isManualMuted());
-    return onMuteChange(() => setManualMutedState(isManualMuted()));
+    setPttModeState(isPttMode());
+    setPttHeldState(isPttHeld());
+    return onMuteChange(() => {
+      setManualMutedState(isManualMuted());
+      setPttModeState(isPttMode());
+      setPttHeldState(isPttHeld());
+    });
   }, []);
 
   useEffect(() => {
@@ -90,7 +106,7 @@ export function VoiceBar() {
     inputRef.current?.blur();
   }
 
-  const active = voiceLink === "LISTENING";
+  const active = voiceLink === "LISTENING" || pttHeld;
   const stateColor = STATE_LABEL_COLOR[voiceLink] ?? "text-hud-gray";
   const sourceColor =
     lastCommand?.source === "REFLEX"
@@ -103,6 +119,17 @@ export function VoiceBar() {
     <div className="hud-panel hud-bracket relative flex flex-col gap-1.5 px-3 py-2 font-mono text-[11px]">
       <div className="flex flex-wrap items-center gap-3">
         <span className={`hud-label ${stateColor}`}>VOICE LINK: {voiceLink}</span>
+
+        <span className="hud-label whitespace-nowrap text-hud-dim">
+          MODE:&nbsp;
+          <span className={pttMode ? "text-hud-amber" : "text-hud-green"}>
+            {pttMode ? "PUSH-TO-TALK (HOLD M)" : "ALWAYS-ON"}
+          </span>
+        </span>
+
+        {pttHeld && (
+          <span className="hud-label animate-red-alert whitespace-nowrap text-hud-red">● RECORDING</span>
+        )}
 
         <Waveform active={active} />
 
@@ -141,6 +168,14 @@ export function VoiceBar() {
 
         <button
           type="button"
+          onClick={() => togglePttMode()}
+          className="hud-label border border-hud-line px-2 py-1 hover:border-hud-green hover:text-hud-green"
+        >
+          {pttMode ? "PTT: ON" : "PTT: OFF"}
+        </button>
+
+        <button
+          type="button"
           onClick={() => toggleManualMute()}
           className="hud-label border border-hud-line px-2 py-1 hover:border-hud-green hover:text-hud-green"
         >
@@ -161,7 +196,15 @@ export function VoiceBar() {
           {HINTS.map((h) => (
             <span key={h}>{h}</span>
           ))}
-          <span className="text-hud-dim">KEYS: L R F D E B A S T X · M mute · / type · 1-7 rehearsal · 0 reset</span>
+          <span className="text-hud-amber">
+            {pttMode
+              ? "HOLD M (OR SHIFT) TO TALK · RELEASE TO SEND"
+              : "ALWAYS-ON LISTENING · CTRL+V FOR PUSH-TO-TALK"}
+          </span>
+          <span className="text-hud-dim">
+            KEYS: L R F D E B A S T X · M hold-to-talk (Shift alt) · Ctrl+V mode · N mute · / type · 1-7
+            rehearsal · 0 reset
+          </span>
         </div>
       )}
     </div>

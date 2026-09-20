@@ -627,13 +627,18 @@ export function drawCraters(
     ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Hard black shadow on the side away from the light.
+    // Hard black shadow on the side away from the light — an offset ellipse
+    // clipped to the crater bowl, same trick as the Earth's terminator, so
+    // the edge follows the bowl's curve instead of radiating from center.
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.clip();
     ctx.fillStyle = `rgba(0,0,0,${Math.min(0.95, 0.7 * alpha + 0.2).toFixed(3)})`;
     ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.ellipse(x, y, rx, ry, 0, LIGHT_ANGLE + Math.PI - 1.15, LIGHT_ANGLE + Math.PI + 1.15);
-    ctx.closePath();
+    ctx.ellipse(x - LIGHT.x * rx * 0.6, y - LIGHT.y * ry * 0.6, rx * 0.98, ry * 0.98, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
 
     // Bright hard rim on the lit side.
     ctx.strokeStyle = `rgba(226,230,236,${Math.min(1, 0.55 * alpha + 0.25).toFixed(3)})`;

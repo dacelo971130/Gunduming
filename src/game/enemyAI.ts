@@ -27,8 +27,14 @@ const AGGRESSOR_START_DISTANCE = 380; // first standoff a pusher settles at
 const AGGRESSOR_MIN_DISTANCE = 210; // how close repeated pushes will eventually drive it
 const AGGRESSOR_PUSH_STEP = 55; // closes this much further on each renewed push
 const FLANKER_DISTANCE = 480;
-const FLANKER_BEARING_MIN = 95;
-const FLANKER_BEARING_MAX = 150;
+// The canopy shows ±35°; the pilot can't turn. A flanker "goes wide" to the
+// edge of the glass, not behind the pilot where it would exist only on radar.
+const FLANKER_BEARING_MIN = 26;
+const FLANKER_BEARING_MAX = 33;
+/** Hard cap on any committed/holding bearing so the unit stays on the canopy. */
+const CANOPY_BEARING_MAX = 33;
+/** Jinks may briefly leave the cone (edge arrow shows where it went), but not by much. */
+const BREAK_BEARING_MAX = 40;
 const FLANKER_SETTLE_DEG = 10; // within this many degrees of its wide bearing, it's "arrived"
 const SUPPRESSOR_DISTANCE = 820; // stays outside CLOSE range, fires steadily
 
@@ -96,6 +102,10 @@ function clampBearing(deg: number): number {
   return Math.max(-179, Math.min(179, deg));
 }
 
+function clampToCanopy(deg: number, limit: number): number {
+  return Math.max(-limit, Math.min(limit, deg));
+}
+
 function enterState(enemy: Enemy, state: Enemy["state"]): void {
   if (enemy.state !== state) stateEnteredAt.set(enemy.id, Date.now());
   game.get().updateEnemy(enemy.id, { state });
@@ -126,7 +136,7 @@ function committedBearingFor(enemy: Enemy, role: Role): number {
   } else {
     target = enemy.bearing * 0.45; // aggressor angles in toward the center for frontal pressure
   }
-  target = clampBearing(target);
+  target = clampToCanopy(target, CANOPY_BEARING_MAX);
   roleBearing.set(enemy.id, target);
   return target;
 }
@@ -140,7 +150,7 @@ function withCoordination(enemy: Enemy, target: number): number {
   for (const other of others) {
     if (Math.abs(adjusted - other.bearing) < CONVERGE_BEARING_GAP && enemy.id > other.id) {
       const away = adjusted >= other.bearing ? 1 : -1;
-      adjusted = clampBearing(adjusted + away * CONVERGE_BEARING_GAP);
+      adjusted = clampToCanopy(adjusted + away * CONVERGE_BEARING_GAP, CANOPY_BEARING_MAX);
     }
   }
   return adjusted;
@@ -224,7 +234,7 @@ function tickOne(enemy: Enemy, dt: number, now: number): void {
     phaseUntil.set(enemy.id, phaseEnd);
     const jinkMag = JINK_MIN_DEG + Math.random() * (JINK_MAX_DEG - JINK_MIN_DEG);
     const jink = Math.random() < 0.5 ? -jinkMag : jinkMag;
-    breakBearing.set(enemy.id, clampBearing(enemy.bearing + jink));
+    breakBearing.set(enemy.id, clampToCanopy(enemy.bearing + jink, BREAK_BEARING_MAX));
     windupUntil.delete(enemy.id); // being shot at cancels a telegraphed shot in favor of breaking off
   }
 

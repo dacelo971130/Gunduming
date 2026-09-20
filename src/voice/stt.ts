@@ -74,7 +74,10 @@ export interface Recognizer {
 
 export function createRecognizer(opts: {
   onInterim(t: string): void;
-  onFinal(t: string): void;
+  /** `confidence` is only ever present when the browser's Web Speech
+   *  implementation actually reports one (Chrome does; many others report 0
+   *  or omit it) — callers must treat `undefined` as "unknown", not "low". */
+  onFinal(t: string, confidence?: number): void;
   onError(e: string): void;
   onEnd(): void;
 }): Recognizer {
@@ -145,16 +148,21 @@ export function createRecognizer(opts: {
       if (muted) return;
       let interim = "";
       let final = "";
+      let finalConfidence: number | undefined;
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const result = ev.results[i];
         const alt = result[0];
         const text = alt ? alt.transcript : "";
         if (!text) continue;
-        if (result.isFinal) final += text;
-        else interim += text;
+        if (result.isFinal) {
+          final += text;
+          if (alt && typeof alt.confidence === "number") finalConfidence = alt.confidence;
+        } else {
+          interim += text;
+        }
       }
       if (interim) opts.onInterim(interim);
-      if (final) opts.onFinal(final);
+      if (final) opts.onFinal(final, finalConfidence);
     };
 
     r.onerror = (ev) => {

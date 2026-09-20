@@ -11,18 +11,33 @@ import { useEffect, useRef } from "react";
 import { game } from "@/game/store";
 import { bus } from "@/lib/bus";
 import { createRecognizer, type Recognizer } from "./stt";
-import { attachKeyboardFallback } from "./keyboard";
+import { attachKeyboardFallback, isTypingTarget } from "./keyboard";
 import { speak, cancelSpeech } from "./tts";
 import {
   beginEchoGuard,
   endEchoGuard,
-  isMuted,
+  isMicOpen,
+  isPttHeld,
+  isPttMode,
   onMuteChange,
   processHeardText,
   runManualCommand,
+  setPttHeld,
   toggleManualMute,
+  togglePttMode,
 } from "./pipeline";
 import type { Phase } from "@/game/types";
+
+/**
+ * Push-to-talk keys: hold `M` (primary) or `Shift` (secondary) to open the
+ * mic; release to close it and submit whatever was heard. `Ctrl+V` toggles
+ * between push-to-talk (the default — the venue is loud) and always-on
+ * listening. `M` used to be the mute toggle; that moved to `N` (see
+ * keyboard.ts) so it doesn't collide with the hold-to-talk key.
+ */
+function isPttKey(key: string): boolean {
+  return key === "m" || key === "M" || key === "Shift";
+}
 
 /** Rehearsal hotkeys 1-7 jump straight to a phase so the pilot can practise any beat. */
 const REHEARSAL_PHASES: Record<number, Phase | undefined> = {
@@ -39,6 +54,10 @@ const POST_SPEECH_RECHECK_MS = 400;
 
 export function VoiceLink() {
   const recognizerRef = useRef<Recognizer | null>(null);
+  /** Latest interim transcript while push-to-talk is held, submitted as the
+   *  final transcript on key-up (Web Speech doesn't always finalize before
+   *  the pilot lets go of the key). */
+  const lastInterimRef = useRef("");
 
   useEffect(() => {
     function refreshVoiceLinkStatus(): void {
@@ -48,7 +67,7 @@ export function VoiceLink() {
         s.setVoiceLink("ERROR");
         return;
       }
-      if (isMuted()) {
+      if (!isMicOpen()) {
         s.setVoiceLink("MUTED");
         return;
       }
@@ -56,7 +75,7 @@ export function VoiceLink() {
     }
 
     const offMute = onMuteChange(() => {
-      recognizerRef.current?.mute(isMuted());
+      recognizerRef.current?.mute(!isMicOpen());
       refreshVoiceLinkStatus();
     });
 
@@ -72,25 +91,85 @@ export function VoiceLink() {
         } finally {
           endEchoGuard();
           setTimeout(() => {
-            recognizerRef.current?.mute(isMuted());
+            recognizerRef.current?.mute(!isMicOpen());
             refreshVoiceLinkStatus();
           }, POST_SPEECH_RECHECK_MS);
         }
       })();
     });
 
+    /** Release push-to-talk: close the mic and submit whatever was heard as
+     *  a final transcript. Safe to call even when PTT isn't currently held. */
+    function releasePtt(): void {
+      if (!isPttHeld()) return;
+      const heard = lastInterimRef.current.trim();
+      lastInterimRef.current = "";
+      game.get().setTranscript("");
+      setPttHeld(false);
+      if (heard) processHeardText(heard);
+    }
+
+    function handlePttKeyDown(e: KeyboardEvent): void {
+      if (isTypingTarget(e.target)) return;
+      if (e.ctrlKey && (e.key === "v" || e.key === "V")) {
+        e.preventDefault();
+        const enabled = togglePttMode();
+        game
+          .get()
+          .pushLog(
+            "INFO",
+            enabled
+              ? "Push-to-talk ENABLED — hold M (or Shift) to talk."
+              : "Push-to-talk DISABLED — always-on listening.",
+          );
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!isPttMode() || !isPttKey(e.key)) return;
+      if (e.repeat || isPttHeld()) return;
+      lastInterimRef.current = "";
+      game.get().setTranscript("");
+      setPttHeld(true);
+      // Hold must work even if the recognizer had stopped or errored out —
+      // force a restart attempt on every press rather than trusting whatever
+      // state it was left in.
+      recognizerRef.current?.start();
+    }
+
+    function handlePttKeyUp(e: KeyboardEvent): void {
+      if (!isPttKey(e.key)) return;
+      releasePtt();
+    }
+
+    function handleMicSafety(): void {
+      // Never leave the mic stuck open if key-up is missed (alt-tab, window
+      // blur, tab hidden mid-hold, etc).
+      releasePtt();
+    }
+
+    window.addEventListener("keydown", handlePttKeyDown);
+    window.addEventListener("keyup", handlePttKeyUp);
+    window.addEventListener("blur", handleMicSafety);
+    document.addEventListener("visibilitychange", handleMicSafety);
+
     /** Error codes already surfaced this session, so each is logged only once. */
     const reported = new Set<string>();
 
     const recognizer = createRecognizer({
       onInterim: (text) => {
+        // While push-to-talk is the active mode and not held, ambient noise
+        // is ignored entirely — never even touch the transcript HUD.
+        if (isPttMode() && !isPttHeld()) return;
+        lastInterimRef.current = text;
         game.get().setTranscript(text);
         bus.emit("voice:transcript", { text, final: false });
       },
-      onFinal: (text) => {
+      onFinal: (text, confidence) => {
+        if (isPttMode() && !isPttHeld()) return;
+        lastInterimRef.current = "";
         bus.emit("voice:transcript", { text, final: true });
         game.get().setTranscript("");
-        processHeardText(text);
+        processHeardText(text, { confidence });
       },
       onError: (err) => {
         // A denied microphone stays denied for the session, and the recognizer
@@ -122,7 +201,7 @@ export function VoiceLink() {
         .get()
         .pushLog("WARN", "Speech recognition unsupported in this browser — keyboard control is active.");
     } else {
-      recognizer.mute(isMuted());
+      recognizer.mute(!isMicOpen());
       recognizer.start();
       refreshVoiceLinkStatus();
     }
@@ -154,6 +233,10 @@ export function VoiceLink() {
       offPhase();
       offAiSay();
       detachKeyboard();
+      window.removeEventListener("keydown", handlePttKeyDown);
+      window.removeEventListener("keyup", handlePttKeyUp);
+      window.removeEventListener("blur", handleMicSafety);
+      document.removeEventListener("visibilitychange", handleMicSafety);
       recognizer.stop();
       cancelSpeech();
     };

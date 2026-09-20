@@ -16,7 +16,8 @@ import {
   type ParticlePool,
 } from "./render/particles";
 import { createWorldState, updateWorld, drawSky, drawBase, drawHorizon, drawGrid, drawCraters, drawDust } from "./render/world";
-import { projectEnemy, edgeArrowPos, clamp, FAR_DIST } from "./render/project";
+import { projectEnemy, edgeArrowPos, clamp, FAR_DIST, type Glass } from "./render/project";
+import { canopyGlass } from "@/components/cockpit/layout";
 import {
   createEnemyAnim,
   updateEnemyAnim,
@@ -88,6 +89,8 @@ export function BattleViewport() {
     let width = 0;
     let height = 0;
     let dpr = 1;
+    /** Visible canopy span between the HUD panel columns — enemies are projected into this. */
+    let glass: Glass = { x: 0, w: 0 };
 
     const particles: ParticlePool = createParticlePool(400);
     const world = createWorldState(800);
@@ -111,7 +114,7 @@ export function BattleViewport() {
       if (cached) return { x: cached.x, y: cached.y };
       const enemy = game.get().enemies.find((e) => e.id === targetId);
       if (!enemy) return null;
-      const p = projectEnemy(enemy.bearing, enemy.distance, enemy.altitude, width, height);
+      const p = projectEnemy(enemy.bearing, enemy.distance, enemy.altitude, width, height, glass);
       return { x: p.x, y: p.y };
     }
 
@@ -123,6 +126,7 @@ export function BattleViewport() {
         dpr = Math.min(2, window.devicePixelRatio || 1);
         width = cw;
         height = ch;
+        glass = canopyGlass(cw, ch);
         canvas.width = Math.floor(cw * dpr);
         canvas.height = Math.floor(ch * dpr);
         canvas.style.width = `${cw}px`;
@@ -280,7 +284,7 @@ export function BattleViewport() {
       lastProjected.clear();
       for (const enemy of sorted) {
         liveIds.add(enemy.id);
-        const proj = projectEnemy(enemy.bearing, enemy.distance, enemy.altitude, width, height);
+        const proj = projectEnemy(enemy.bearing, enemy.distance, enemy.altitude, width, height, glass);
         lastProjected.set(enemy.id, { x: proj.x, y: proj.y, scale: proj.scale });
 
         let anim = anims.get(enemy.id);
@@ -291,7 +295,7 @@ export function BattleViewport() {
         updateEnemyAnim(anim, enemy.bearing, dt, proj.x, proj.y, proj.scale, enemy.kind);
 
         if (!proj.visible) {
-          const pos = edgeArrowPos(proj.side, enemy.altitude, width, height);
+          const pos = edgeArrowPos(proj.side, enemy.altitude, width, height, glass);
           const color = enemy.kind === "CRIMSON" ? HOSTILE_CRIMSON : HOSTILE_MANTIS;
           drawEdgeArrow(ctx, pos.x, pos.y, proj.side, color, `${enemy.kind} ${Math.round(enemy.distance)}M`);
           continue;

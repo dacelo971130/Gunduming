@@ -46,6 +46,7 @@ const PlayerSchema = z.object({
   stance: StanceSchema,
   bearing: z.number(),
   special: z.number(),
+  weapon: z.enum(["RIFLE", "CANNON", "MISSILE", "BLADE"]).default("RIFLE"),
 });
 
 const EnemyKindSchema = z.enum(["MANTIS", "CRIMSON"]);
@@ -86,6 +87,7 @@ const CommandActionSchema = z.enum([
   "SCAN",
   "STATUS_REPORT",
   "FIRE_SPECIAL",
+  "SWITCH_WEAPON",
   "NONE",
 ]);
 

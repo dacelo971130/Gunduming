@@ -206,11 +206,14 @@ function doBoost(
   game.get().setStance("NEUTRAL");
 
   // Reposition relative to the enemy formation — this is how the pilot breaks a frontal engagement.
-  const swing = 55 + Math.random() * 45; // 55..100 degrees
+  // Big enough to visibly slide the whole formation across the canopy (and push
+  // the far side briefly out of the ±35° cone, where edge arrows take over);
+  // small enough that the squad AI eases everyone back on screen within seconds.
+  const swing = 30 + Math.random() * 15; // 30..45 degrees
   const dir = cmd.direction === "LEFT" ? -1 : cmd.direction === "RIGHT" ? 1 : Math.random() < 0.5 ? -1 : 1;
   for (const enemy of livingEnemies()) {
     let bearing = enemy.bearing - dir * swing;
-    bearing = (((bearing + 180) % 360) + 360) % 360 - 180;
+    bearing = Math.max(-60, Math.min(60, bearing));
     const distance = cmd.direction === "BACK" ? enemy.distance + 60 : Math.max(150, enemy.distance - 40);
     game.get().updateEnemy(enemy.id, { bearing, distance });
   }

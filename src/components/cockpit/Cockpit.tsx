@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { bus } from "@/lib/bus";
 import { CockpitFrame } from "./CockpitFrame";
+import { HUD_GUTTER_PX, HUD_LEFT_COLUMN_PX, HUD_RIGHT_COLUMN_PX } from "./layout";
 import { PanelFrame } from "./PanelFrame";
 import { TopBar } from "./TopBar";
 import { PilotStatus } from "./PilotStatus";
@@ -48,9 +49,11 @@ export function Cockpit({ viewport, voiceBar }: CockpitProps) {
       <CockpitFrame />
 
       <div
-        className="pointer-events-none absolute inset-0 z-10 grid gap-3 p-3"
+        className="pointer-events-none absolute inset-0 z-10 grid"
         style={{
-          gridTemplateColumns: "290px 1fr 320px",
+          gap: HUD_GUTTER_PX,
+          padding: HUD_GUTTER_PX,
+          gridTemplateColumns: `${HUD_LEFT_COLUMN_PX}px 1fr ${HUD_RIGHT_COLUMN_PX}px`,
           gridTemplateRows: "auto 1fr auto",
           gridTemplateAreas: '"top top top" "left mid right" "bottom bottom bottom"',
         }}

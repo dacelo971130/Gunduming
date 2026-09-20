@@ -1,4 +1,6 @@
-import type { Subsystem } from "@/lib/config";
+import type { Subsystem, WeaponId } from "@/lib/config";
+
+export type { WeaponId } from "@/lib/config";
 
 /* ------------------------------------------------------------------ phases */
 
@@ -30,6 +32,7 @@ export interface Player {
   stance: Stance;
   bearing: number;     // where the mech is facing, degrees, 0 = north
   special: number;     // 0..100 charge for the finishing move
+  weapon: WeaponId;    // currently selected weapon (see WEAPONS in config.ts)
 }
 
 /* ----------------------------------------------------------------- enemies */
@@ -135,6 +138,7 @@ export type GameCommand =
   | { action: "SCAN" }
   | { action: "STATUS_REPORT" }
   | { action: "FIRE_SPECIAL" }
+  | { action: "SWITCH_WEAPON"; weapon: WeaponId | "NEXT" | "PREVIOUS" }
   | { action: "NONE" };
 
 export type CommandAction = GameCommand["action"];

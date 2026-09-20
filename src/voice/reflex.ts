@@ -38,18 +38,33 @@ function levenshtein(a: string, b: string): number {
 
 /* -------------------------------------------------------------- wake word */
 
+/**
+ * `src/lib/config.ts` is frozen, so a much wider net of mishearings lives
+ * here instead — a loud venue means the recognizer rarely returns a clean
+ * "echo". Both lists are matched together; nothing in config.ts needs to
+ * change for this file to accept more variants.
+ */
+const EXTENDED_WAKE_WORDS = [
+  "echo", "eco", "ekko", "eko", "echoe", "echoes", "hello", "ago",
+  "echo one", "echo 01", "acho", "eccho", "ok echo", "okay echo", "hey echo",
+];
+
+const ALL_WAKE_WORDS = Array.from(new Set([...WAKE_WORDS, ...EXTENDED_WAKE_WORDS]));
+
 export function matchWakeWord(text: string): boolean {
   const norm = normalise(text);
   if (!norm) return false;
-  if (WAKE_WORDS.some((w) => norm.includes(w))) return true;
+  if (ALL_WAKE_WORDS.some((w) => norm.includes(w))) return true;
   const leadingToken = norm.split(" ")[0] ?? "";
   if (!leadingToken) return false;
-  return WAKE_WORDS.some((w) => levenshtein(leadingToken, w.split(" ")[0]) <= 1);
+  // Noisy venues mangle short words badly — tolerate a wider edit distance
+  // on just the leading token rather than the whole phrase.
+  return ALL_WAKE_WORDS.some((w) => levenshtein(leadingToken, w.split(" ")[0]) <= 2);
 }
 
 function stripWakePrefix(norm: string): string {
   const tokens = norm.split(" ");
-  if (tokens.length > 1 && WAKE_WORDS.includes(tokens[0])) {
+  if (tokens.length > 1 && ALL_WAKE_WORDS.includes(tokens[0])) {
     return tokens.slice(1).join(" ");
   }
   return norm;

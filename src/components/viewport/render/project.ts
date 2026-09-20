@@ -46,13 +46,26 @@ export interface Projected {
   norm: number;
 }
 
-/** Project a single enemy anchor (feet/center) into screen space. */
+/** Horizontal span the FOV is mapped onto. Defaults to the full canvas width. */
+export interface Glass {
+  x: number;
+  w: number;
+}
+
+/**
+ * Project a single enemy anchor (feet/center) into screen space. `glass` is
+ * the horizontal region actually visible to the pilot (the canvas fills the
+ * whole frame but the HUD panel columns cover its edges) — the FOV cone is
+ * mapped onto that span so an enemy dead ahead sits in the middle of the
+ * glass and one at the edge of the cone sits at the edge of the glass.
+ */
 export function projectEnemy(
   bearing: number,
   distance: number,
   altitude: number,
   width: number,
   height: number,
+  glass: Glass = { x: 0, w: width },
 ): Projected {
   const half = FOV_DEG / 2;
   const norm = bearing / half;
@@ -63,7 +76,7 @@ export function projectEnemy(
   const depthT = (distClamped - NEAR_DIST) / (FAR_DIST - NEAR_DIST);
   const scale = clamp(REF_SCALE_DIST / distClamped, MIN_SCALE, MAX_SCALE);
 
-  const x = width / 2 + norm * (width / 2) * EDGE_PAD;
+  const x = glass.x + glass.w / 2 + norm * (glass.w / 2) * EDGE_PAD;
   const feetDrop = height * GROUND_DROP_RATIO * Math.pow(1 - depthT, 1.4);
   const altPix = altitude * height * ALT_SWING_RATIO * (1 - depthT * 0.5);
   const y = hy + feetDrop - altPix;
@@ -77,9 +90,10 @@ export function edgeArrowPos(
   altitude: number,
   width: number,
   height: number,
+  glass: Glass = { x: 0, w: width },
 ): { x: number; y: number } {
   const hy = horizonY(height);
-  const x = side === "LEFT" ? width * 0.045 : width * 0.955;
+  const x = side === "LEFT" ? glass.x + glass.w * 0.045 : glass.x + glass.w * 0.955;
   const y = clamp(hy - altitude * height * 0.1, height * 0.14, height * 0.86);
   return { x, y };
 }

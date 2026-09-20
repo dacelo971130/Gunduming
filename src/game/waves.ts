@@ -15,7 +15,10 @@ export function spawnWave(n: number): void {
   const count = n <= 1 ? 2 : n === 2 ? 3 : 4;
   const hp = n >= 3 ? 130 : 100;
   const letter = String.fromCharCode(64 + Math.max(1, Math.min(n, 6))); // 1->A, 2->B, 3->C…
-  const spread = n >= 3 ? 50 : 80; // wave 3 groups tighter
+  // Spawn inside the canopy's 70° field of view so the pilot actually sees the
+  // wave arrive; wave 3 groups tighter. (The pilot never turns, so anything
+  // wider than ±35° only ever exists on the radar.)
+  const spread = n >= 3 ? 22 : 30;
   const now = Date.now();
 
   for (let i = 0; i < count; i++) {
