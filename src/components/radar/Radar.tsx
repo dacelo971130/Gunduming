@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useGame } from "@/game/store";
 import type { Enemy } from "@/game/types";
 
-const SIZE = 220;
+const SIZE = 240;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
-const MAX_R = 92;
+const MAX_R = 96; // glass radius used for plotting
+const GLASS_R = 102;
+const BEZEL_R = 114;
 const MAX_DISTANCE = 1400;
 const RINGS = [400, 800, 1200];
 const SWEEP_PERIOD_MS = 3200;
-const TRAIL_DEG = 36;
+const TRAIL_STEPS = 10;
+const TRAIL_STEP_DEG = 4;
 
 function polar(cx: number, cy: number, r: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
@@ -30,254 +33,258 @@ function wedgePath(cx: number, cy: number, r: number, fromDeg: number, toDeg: nu
   return `M ${cx} ${cy} L ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y} Z`;
 }
 
+function shortName(codename: string) {
+  const parts = codename.split("/");
+  return (parts.length > 1 ? parts[parts.length - 1] : codename).trim();
+}
+
+function Bracket({ x, y, s, color }: { x: number; y: number; s: number; color: string }) {
+  const c = s;
+  const l = s * 0.5;
+  return (
+    <g stroke={color} strokeWidth={1.2} fill="none">
+      <path d={`M ${x - c} ${y - c + l} V ${y - c} H ${x - c + l}`} />
+      <path d={`M ${x + c - l} ${y - c} H ${x + c} V ${y - c + l}`} />
+      <path d={`M ${x + c} ${y + c - l} V ${y + c} H ${x + c - l}`} />
+      <path d={`M ${x - c + l} ${y + c} H ${x - c} V ${y + c - l}`} />
+    </g>
+  );
+}
+
 function EnemyBlip({ enemy, locked, brightness }: { enemy: Enemy; locked: boolean; brightness: number }) {
-  const r = Math.min(MAX_R, (enemy.distance / MAX_DISTANCE) * MAX_R);
+  const r = Math.min(MAX_R - 3, (enemy.distance / MAX_DISTANCE) * MAX_R);
   const { x, y } = polar(CX, CY, r, enemy.bearing);
   const destroyed = enemy.state === "DESTROYED";
   const isCrimson = enemy.kind === "CRIMSON";
-  const color = isCrimson ? "var(--color-hud-red)" : "var(--color-hud-green)";
-  const size = isCrimson ? 7 : 5;
+  const color = isCrimson ? "var(--color-mfd-red)" : "var(--color-mfd-phosphor)";
+  const size = isCrimson ? 4.2 : 2.8;
+  const glow = 0.3 + brightness * 0.7;
+  const tagAnchor = x > CX + 20 ? "end" : "start";
+  const tagX = x > CX + 20 ? x - size - 4 : x + size + 4;
 
   return (
     <motion.g
-      key={enemy.id}
-      initial={{ opacity: 0, scale: 0.4 }}
-      animate={
-        destroyed
-          ? { opacity: [1, 0.15, 0.85, 0], scale: [1, 1.4, 1, 0.5] }
-          : { opacity: 0.35 + brightness * 0.65, scale: 1 }
-      }
-      exit={{ opacity: 0, scale: 0.3 }}
-      transition={destroyed ? { duration: 0.9, times: [0, 0.2, 0.5, 1] } : { duration: 0.2 }}
+      initial={{ opacity: 0 }}
+      animate={destroyed ? { opacity: [1, 0.2, 0.7, 0] } : { opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={destroyed ? { duration: 1.1, times: [0, 0.25, 0.5, 1] } : { duration: 0.25 }}
     >
-      {isCrimson && !destroyed && (
-        <circle
-          cx={x}
-          cy={y}
-          r={size + 4}
-          fill="none"
-          stroke={color}
-          strokeWidth={1}
-          className="animate-breathe"
-          opacity={0.6}
-        />
-      )}
-
+      {/* phosphor afterglow */}
+      <circle cx={x} cy={y} r={size * 2.6} fill={color} opacity={glow * 0.22} filter="url(#radar-blur)" />
       {isCrimson ? (
         <polygon
-          points={`${x},${y - size} ${x + size},${y + size} ${x - size},${y + size}`}
+          points={`${x},${y - size - 1} ${x + size + 1},${y + size} ${x - size - 1},${y + size}`}
           fill={color}
-          style={{ filter: `drop-shadow(0 0 4px ${color})` }}
+          opacity={0.45 + glow * 0.55}
         />
       ) : (
-        <rect
-          x={x - size / 1.4}
-          y={y - size / 1.4}
-          width={(size * 2) / 1.4}
-          height={(size * 2) / 1.4}
-          fill={color}
-          transform={`rotate(45 ${x} ${y})`}
-          style={{ filter: `drop-shadow(0 0 3px ${color})` }}
+        <circle cx={x} cy={y} r={size} fill={color} opacity={0.4 + glow * 0.6} />
+      )}
+      {isCrimson && !destroyed && (
+        <motion.circle
+          cx={x}
+          cy={y}
+          r={size + 5}
+          fill="none"
+          stroke={color}
+          strokeWidth={0.8}
+          animate={{ opacity: [0.7, 0.15, 0.7] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
         />
       )}
-
-      {locked && !destroyed && (
-        <motion.g
-          animate={{ rotate: 360 }}
-          transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-          style={{ transformOrigin: `${x}px ${y}px` }}
+      {!destroyed && (
+        <text
+          x={tagX}
+          y={y + 2.5}
+          textAnchor={tagAnchor}
+          fontFamily="var(--font-mono)"
+          fontSize={6.5}
+          fill={color}
+          opacity={0.35 + glow * 0.65}
         >
-          {[0, 90, 180, 270].map((a) => {
-            const p = polar(x, y, size + 8, a);
-            return (
-              <line
-                key={a}
-                x1={p.x}
-                y1={p.y}
-                x2={polar(x, y, size + 4, a).x}
-                y2={polar(x, y, size + 4, a).y}
-                stroke="var(--color-hud-green)"
-                strokeWidth={1.5}
-              />
-            );
-          })}
-        </motion.g>
+          {shortName(enemy.codename)}
+        </text>
       )}
+      {locked && !destroyed && <Bracket x={x} y={y} s={size + 6} color="var(--color-mfd-phosphor)" />}
     </motion.g>
   );
 }
 
-/** Circular top-down radar, player fixed at centre facing up (bearing 0). */
+/** Round CRT tactical scope: player fixed at centre facing up (bearing 0, + = right). */
 export function Radar() {
   const enemies = useGame((s) => s.enemies);
   const targetId = useGame((s) => s.targetId);
+  const heading = useGame((s) => s.player.bearing);
+  const reduced = useReducedMotion();
   const [sweepAngle, setSweepAngle] = useState(0);
 
   useEffect(() => {
+    if (reduced) return;
     const startedAt = Date.now();
     const id = window.setInterval(() => {
       const elapsed = (Date.now() - startedAt) % SWEEP_PERIOD_MS;
       setSweepAngle((elapsed / SWEEP_PERIOD_MS) * 360);
-    }, 60);
+    }, 50);
     return () => window.clearInterval(id);
-  }, []);
+  }, [reduced]);
 
   const target = useMemo(
     () => (targetId ? (enemies.find((e) => e.id === targetId) ?? null) : null),
     [enemies, targetId],
   );
-  const targetR = target ? Math.min(MAX_R, (target.distance / MAX_DISTANCE) * MAX_R) : 0;
-  const targetPoint = target ? polar(CX, CY, targetR, target.bearing) : null;
-  const labelPoint = target ? polar(CX, CY, MAX_R + 14, target.bearing) : null;
+  const live = enemies.filter((e) => e.state !== "DESTROYED").length;
 
   return (
-    <div className="flex h-full w-full items-center justify-center p-1.5">
-      <svg
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
-        width="100%"
-        height="100%"
-        style={{ maxWidth: 234, maxHeight: 234 }}
-      >
-        {/* range rings */}
-        {RINGS.map((dist) => {
-          const r = (dist / MAX_DISTANCE) * MAX_R;
-          return (
-            <circle
-              key={dist}
-              cx={CX}
-              cy={CY}
-              r={r}
-              fill="none"
-              stroke="var(--color-hud-line)"
-              strokeWidth={1}
-            />
-          );
-        })}
-        <circle cx={CX} cy={CY} r={MAX_R} fill="none" stroke="var(--color-hud-grid)" strokeWidth={1} />
+    <div className="flex h-full w-full items-center justify-center p-1">
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width="100%" height="100%" style={{ maxHeight: "100%" }}>
+        <defs>
+          <filter id="radar-blur" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="2.2" />
+          </filter>
+          <radialGradient id="radar-glass" cx="50%" cy="45%" r="55%">
+            <stop offset="0%" stopColor="#0c1f15" />
+            <stop offset="65%" stopColor="#07130c" />
+            <stop offset="100%" stopColor="#030705" />
+          </radialGradient>
+          <linearGradient id="radar-bezel" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#3a424a" />
+            <stop offset="45%" stopColor="#1a1f24" />
+            <stop offset="100%" stopColor="#0b0e11" />
+          </linearGradient>
+          <linearGradient id="radar-sheen" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.10)" />
+            <stop offset="45%" stopColor="rgba(255,255,255,0.0)" />
+          </linearGradient>
+          <clipPath id="radar-clip">
+            <circle cx={CX} cy={CY} r={GLASS_R} />
+          </clipPath>
+        </defs>
 
-        {RINGS.map((dist) => {
-          const r = (dist / MAX_DISTANCE) * MAX_R;
+        {/* bezel ring */}
+        <circle cx={CX} cy={CY} r={BEZEL_R} fill="url(#radar-bezel)" stroke="#05070a" strokeWidth={1} />
+        <circle cx={CX} cy={CY} r={GLASS_R + 1.5} fill="none" stroke="#000" strokeWidth={2} />
+        <circle cx={CX} cy={CY} r={GLASS_R + 3} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={0.8} />
+
+        {/* engraved bearing labels on the bezel, every 30° */}
+        {Array.from({ length: 12 }).map((_, i) => {
+          const deg = i * 30;
+          const p = polar(CX, CY, GLASS_R + 6.5, deg);
           return (
             <text
-              key={dist}
-              x={CX + 3}
-              y={CY - r - 2}
-              className="fill-hud-dim"
-              fontSize={6}
-              letterSpacing={0.5}
+              key={deg}
+              x={p.x}
+              y={p.y}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontFamily="var(--font-instrument)"
+              fontSize={5.5}
+              fontWeight={700}
+              fill={deg === 0 ? "var(--color-mfd-text)" : "var(--color-mfd-bezel-label)"}
+              transform={`rotate(${deg} ${p.x} ${p.y})`}
             >
-              {dist}
+              {deg.toString().padStart(3, "0")}
             </text>
           );
         })}
 
-        {/* bearing ticks every 30deg, N/E/S/W labelled */}
-        {Array.from({ length: 12 }).map((_, i) => {
-          const deg = i * 30;
-          const outer = polar(CX, CY, MAX_R, deg);
-          const inner = polar(CX, CY, MAX_R - (deg % 90 === 0 ? 8 : 4), deg);
-          const label = { 0: "N", 90: "E", 180: "S", 270: "W" }[deg as 0 | 90 | 180 | 270];
-          const labelPos = polar(CX, CY, MAX_R + 9, deg);
-          return (
-            <g key={deg}>
-              <line
-                x1={inner.x}
-                y1={inner.y}
-                x2={outer.x}
-                y2={outer.y}
-                stroke="var(--color-hud-dim)"
-                strokeWidth={deg % 90 === 0 ? 1.2 : 0.8}
-              />
-              {label && (
-                <text
-                  x={labelPos.x}
-                  y={labelPos.y + 2.5}
-                  textAnchor="middle"
-                  className="fill-hud-green"
-                  fontSize={7.5}
-                  fontWeight={700}
-                >
-                  {label}
-                </text>
-              )}
-            </g>
-          );
-        })}
+        {/* glass */}
+        <circle cx={CX} cy={CY} r={GLASS_R} fill="url(#radar-glass)" />
 
-        {/* sweep trail wedge + line — CSS-driven via .animate-sweep; a parallel
-            JS timer below tracks the same period to brighten passed blips */}
-        <g className="animate-sweep" style={{ transformOrigin: `${CX}px ${CY}px` }}>
-          <path
-            d={wedgePath(CX, CY, MAX_R, -TRAIL_DEG, 0)}
-            fill="var(--color-hud-green)"
-            opacity={0.14}
-          />
-          <line
-            x1={CX}
-            y1={CY}
-            x2={CX}
-            y2={CY - MAX_R}
-            stroke="var(--color-hud-green)"
-            strokeWidth={1.4}
-            opacity={0.85}
-          />
-        </g>
+        <g clipPath="url(#radar-clip)">
+          {/* fine grid */}
+          <line x1={CX - GLASS_R} y1={CY} x2={CX + GLASS_R} y2={CY} stroke="var(--color-mfd-grid)" strokeWidth={0.8} />
+          <line x1={CX} y1={CY - GLASS_R} x2={CX} y2={CY + GLASS_R} stroke="var(--color-mfd-grid)" strokeWidth={0.8} />
 
-        {/* player marker, always centre, facing up */}
-        <polygon
-          points={`${CX},${CY - 5} ${CX + 4},${CY + 4} ${CX - 4},${CY + 4}`}
-          fill="var(--color-hud-white)"
-        />
-
-        <AnimatePresence>
-          {enemies.map((enemy) => {
-            const bearingNorm = norm360(enemy.bearing);
-            const rel = norm360(sweepAngle - bearingNorm);
-            const brightness = rel < TRAIL_DEG ? 1 - rel / TRAIL_DEG : 0;
+          {/* range rings */}
+          {RINGS.map((dist) => {
+            const r = (dist / MAX_DISTANCE) * MAX_R;
             return (
-              <EnemyBlip
-                key={enemy.id}
-                enemy={enemy}
-                locked={enemy.id === targetId}
-                brightness={brightness}
+              <g key={dist}>
+                <circle cx={CX} cy={CY} r={r} fill="none" stroke="var(--color-mfd-phosphor-faint)" strokeWidth={0.9} />
+                <text x={CX + 2.5} y={CY - r - 1.5} fontFamily="var(--font-mono)" fontSize={5.5} fill="var(--color-mfd-phosphor-dim)">
+                  {dist}m
+                </text>
+              </g>
+            );
+          })}
+          <circle cx={CX} cy={CY} r={MAX_R} fill="none" stroke="var(--color-mfd-phosphor-dim)" strokeWidth={0.8} opacity={0.6} />
+
+          {/* bearing ticks: minor every 10°, major every 30° */}
+          {Array.from({ length: 36 }).map((_, i) => {
+            const deg = i * 10;
+            const major = deg % 30 === 0;
+            const a = polar(CX, CY, MAX_R, deg);
+            const b = polar(CX, CY, MAX_R - (major ? 6 : 3), deg);
+            return (
+              <line
+                key={deg}
+                x1={a.x}
+                y1={a.y}
+                x2={b.x}
+                y2={b.y}
+                stroke={deg === 0 ? "var(--color-mfd-phosphor)" : "var(--color-mfd-phosphor-dim)"}
+                strokeWidth={major ? 1 : 0.6}
+                opacity={major ? 0.9 : 0.6}
               />
             );
           })}
-        </AnimatePresence>
 
-        {/* locked target leader line + label */}
-        {target && targetPoint && labelPoint && (
-          <g>
-            <line
-              x1={targetPoint.x}
-              y1={targetPoint.y}
-              x2={labelPoint.x}
-              y2={labelPoint.y}
-              stroke="var(--color-hud-green)"
-              strokeWidth={0.75}
-              strokeDasharray="2 2"
-              opacity={0.8}
-            />
-            <text
-              x={labelPoint.x}
-              y={labelPoint.y}
-              textAnchor={labelPoint.x > CX ? "start" : labelPoint.x < CX ? "end" : "middle"}
-              className="fill-hud-green"
-              fontSize={6.5}
-              fontWeight={700}
-            >
-              {target.codename}
-            </text>
-            <text
-              x={labelPoint.x}
-              y={labelPoint.y + 7}
-              textAnchor={labelPoint.x > CX ? "start" : labelPoint.x < CX ? "end" : "middle"}
-              className="fill-hud-gray"
-              fontSize={6}
-            >
-              {Math.round(target.distance)}m
-            </text>
+          {/* sweep with fading phosphor trail */}
+          <g
+            className={reduced ? "" : "animate-sweep"}
+            style={{ transformOrigin: `${CX}px ${CY}px`, animationDuration: `${SWEEP_PERIOD_MS}ms` }}
+          >
+            {Array.from({ length: TRAIL_STEPS }).map((_, i) => (
+              <path
+                key={i}
+                d={wedgePath(CX, CY, MAX_R, -(i + 1) * TRAIL_STEP_DEG, -i * TRAIL_STEP_DEG)}
+                fill="var(--color-mfd-phosphor)"
+                opacity={0.22 * Math.pow(1 - i / TRAIL_STEPS, 1.6)}
+              />
+            ))}
+            <line x1={CX} y1={CY} x2={CX} y2={CY - MAX_R} stroke="var(--color-mfd-phosphor)" strokeWidth={1.2} opacity={0.9} />
           </g>
+
+          {/* own ship */}
+          <polygon
+            points={`${CX},${CY - 5} ${CX + 3.6},${CY + 3.6} ${CX},${CY + 1.6} ${CX - 3.6},${CY + 3.6}`}
+            fill="var(--color-mfd-text)"
+            opacity={0.95}
+          />
+
+          <AnimatePresence>
+            {enemies.map((enemy) => {
+              const rel = norm360(sweepAngle - norm360(enemy.bearing));
+              const brightness = reduced ? 0.8 : Math.pow(1 - rel / 360, 2.2);
+              return (
+                <EnemyBlip key={enemy.id} enemy={enemy} locked={enemy.id === targetId} brightness={brightness} />
+              );
+            })}
+          </AnimatePresence>
+
+          {/* glass sheen */}
+          <ellipse cx={CX - 28} cy={CY - 46} rx={54} ry={26} fill="url(#radar-sheen)" transform={`rotate(-28 ${CX - 28} ${CY - 46})`} />
+        </g>
+
+        {/* readouts on the lower bezel */}
+        <text x={CX - BEZEL_R + 6} y={SIZE - 4} fontFamily="var(--font-mono)" fontSize={6} fill="var(--color-mfd-bezel-label)">
+          HDG {norm360(heading).toFixed(0).padStart(3, "0")}
+        </text>
+        <text x={CX + BEZEL_R - 6} y={SIZE - 4} textAnchor="end" fontFamily="var(--font-mono)" fontSize={6} fill="var(--color-mfd-bezel-label)">
+          RNG 1400m · TRK {live.toString().padStart(2, "0")}
+        </text>
+        {target && (
+          <text
+            x={CX}
+            y={SIZE - 4}
+            textAnchor="middle"
+            fontFamily="var(--font-mono)"
+            fontSize={6}
+            fontWeight={700}
+            fill={target.kind === "CRIMSON" ? "var(--color-mfd-red)" : "var(--color-mfd-phosphor)"}
+          >
+            LOCK {shortName(target.codename)} {Math.round(target.distance)}m
+          </text>
         )}
       </svg>
     </div>

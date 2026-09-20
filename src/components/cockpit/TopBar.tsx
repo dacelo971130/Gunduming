@@ -3,13 +3,18 @@
 import { useEffect, useState } from "react";
 import { useGame } from "@/game/store";
 import type { Mission } from "@/game/types";
+import { WarningLamps } from "./CockpitFrame";
 
 function useClock() {
   const [time, setTime] = useState<Date | null>(null);
   useEffect(() => {
-    setTime(new Date());
-    const id = window.setInterval(() => setTime(new Date()), 1000);
-    return () => window.clearInterval(id);
+    const tick = () => setTime(new Date());
+    const first = window.setTimeout(tick, 0);
+    const id = window.setInterval(tick, 1000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
   }, []);
   return time;
 }
@@ -18,11 +23,11 @@ function pad(n: number) {
   return n.toString().padStart(2, "0");
 }
 
-const THREAT_STYLE: Record<Mission["threat"], string> = {
-  LOW: "text-hud-green border-hud-green/40",
-  MODERATE: "text-hud-amber border-hud-amber/40",
-  HIGH: "text-hud-amber border-hud-amber/70",
-  CRITICAL: "text-hud-red border-hud-red/70 animate-blink",
+const THREAT_STYLE: Record<Mission["threat"], { text: string; lamp: string }> = {
+  LOW: { text: "text-mfd-phosphor", lamp: "lamp-green" },
+  MODERATE: { text: "text-mfd-amber", lamp: "lamp-amber" },
+  HIGH: { text: "text-mfd-amber", lamp: "lamp-amber animate-blink" },
+  CRITICAL: { text: "text-mfd-red", lamp: "lamp-red animate-blink" },
 };
 
 const PHASE_LABEL: Record<string, string> = {
@@ -38,35 +43,42 @@ const PHASE_LABEL: Record<string, string> = {
   DEFEAT: "SYS FAULT",
 };
 
-/** Top bar: system state, mission header, live clock, threat chip, link mode. */
-export function TopBar() {
+/** Slim status rail above the aperture: phase, mission header, annunciators, threat, link, clock. */
+export function TopBar({ height }: { height: number }) {
   const phase = useGame((s) => s.phase);
   const missionId = useGame((s) => s.mission.id);
   const sector = useGame((s) => s.mission.sector);
   const threat = useGame((s) => s.mission.threat);
   const neuralOnline = useGame((s) => s.neuralOnline);
   const time = useClock();
+  const fault = phase === "DEFEAT";
+  const compact = height < 36;
 
   return (
-    <div className="hud-panel flex h-10 items-center justify-between px-4 text-[11px] tracking-[0.14em]">
-      <div className="flex items-center gap-4 overflow-hidden">
-        <span className="text-glow shrink-0 font-semibold text-hud-green">
-          {PHASE_LABEL[phase] ?? "SYS ONLINE"}
-        </span>
-        <span className="text-hud-dim">|</span>
-        <span className="truncate text-hud-gray">
-          MISSION {missionId} <span className="text-hud-dim">·</span> {sector}
+    <div className="console-rail flex w-full items-center justify-between px-4" style={{ height }}>
+      <div className="flex min-w-0 items-center gap-3">
+        <span className={`lamp lamp-sm ${fault ? "lamp-red animate-blink" : "lamp-green"}`} />
+        <span className={`mfd-engraved shrink-0 ${fault ? "text-mfd-red" : ""}`}>{PHASE_LABEL[phase] ?? "SYS ONLINE"}</span>
+        <span className="h-[14px] w-px bg-black shadow-[1px_0_0_rgba(255,255,255,0.06)]" />
+        <span className="mfd-engraved truncate opacity-80">
+          MISSION {missionId} <span className="opacity-50">/</span> {sector}
         </span>
       </div>
 
+      <div className={`flex items-start ${compact ? "scale-90" : ""}`}>
+        <WarningLamps />
+      </div>
+
       <div className="flex shrink-0 items-center gap-4">
-        <span className={`hud-label rounded-sm border px-2 py-0.5 ${THREAT_STYLE[threat]}`}>
-          THREAT {threat}
+        <span className="flex items-center gap-[6px]">
+          <span className={`lamp lamp-sm ${THREAT_STYLE[threat].lamp}`} />
+          <span className={`mfd-engraved ${THREAT_STYLE[threat].text}`}>THREAT {threat}</span>
         </span>
-        <span className={neuralOnline ? "text-hud-green" : "text-hud-amber"}>
-          {neuralOnline ? "NEURAL LINK · ONLINE" : "REFLEX LINK · LOCAL"}
+        <span className="flex items-center gap-[6px]">
+          <span className={`lamp lamp-sm ${neuralOnline ? "lamp-green" : "lamp-amber"}`} />
+          <span className="mfd-engraved">{neuralOnline ? "NEURAL LINK" : "REFLEX LOCAL"}</span>
         </span>
-        <span className="tabular-nums font-semibold text-hud-white">
+        <span className="mfd-num font-mono text-[12px] font-semibold tracking-[0.08em] text-mfd-text">
           {time ? `${pad(time.getHours())}:${pad(time.getMinutes())}:${pad(time.getSeconds())}` : "--:--:--"}
         </span>
       </div>

@@ -3,7 +3,8 @@
  * Never throws — a bad or refused command returns { ok: false, speech: "…" }.
  */
 import { game } from "@/game/store";
-import { bus, say } from "@/lib/bus";
+import { bus, say, type AudioCue } from "@/lib/bus";
+import { WEAPONS, weaponSpec, type WeaponId, type WeaponSpec } from "@/lib/config";
 import type {
   CommandResult,
   CommandSource,
@@ -13,6 +14,20 @@ import type {
 } from "@/game/types";
 
 const HEAT_MAX = 100;
+/** MISSILE fires this many rounds per ATTACK; each round hits everything in the cone. */
+const MISSILE_SALVO_ROUNDS = 6;
+/** BARRAGE widens whatever bearing cone the weapon already has by this many degrees. */
+const BARRAGE_EXTRA_CONE_DEG = 25;
+/** Weak-point multiplier: the cannon is the armor-breaker, everything else keeps the legacy bonus. */
+const WEAK_POINT_MULT_CANNON = 1.8;
+const WEAK_POINT_MULT_DEFAULT = 1.6;
+
+const FIRE_CUE: Record<WeaponId, AudioCue> = {
+  RIFLE: "FIRE",
+  CANNON: "FIRE_CANNON",
+  MISSILE: "FIRE_MISSILE",
+  BLADE: "FIRE_BLADE",
+};
 
 /* --------------------------------------------------------------- targets */
 
@@ -23,6 +38,11 @@ function livingEnemies(): Enemy[] {
 function nearestOf(pool: Enemy[]): Enemy | null {
   if (pool.length === 0) return null;
   return pool.reduce((a, b) => (b.distance < a.distance ? b : a));
+}
+
+/** Smallest signed difference between two bearings, in degrees (-180..180]. */
+function bearingDelta(a: number, b: number): number {
+  return ((a - b + 540) % 360) - 180;
 }
 
 /** Resolve a TargetSelector against the live enemy roster. */
@@ -71,6 +91,23 @@ function currentTarget(): Enemy | null {
   return e && e.state !== "DESTROYED" ? e : null;
 }
 
+/* --------------------------------------------------------------- weapons */
+
+/** "HEAVY CANNON" → "Heavy cannon" for spoken lines. */
+function spokenName(spec: WeaponSpec): string {
+  const lower = spec.name.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** Resolve NEXT/PREVIOUS against the WEAPONS order; unknown ids fall back to the current weapon. */
+function resolveWeapon(selection: WeaponId | "NEXT" | "PREVIOUS", current: WeaponId): WeaponId {
+  const n = WEAPONS.length;
+  const idx = Math.max(0, WEAPONS.findIndex((w) => w.id === current));
+  if (selection === "NEXT") return WEAPONS[(idx + 1) % n].id;
+  if (selection === "PREVIOUS") return WEAPONS[(idx - 1 + n) % n].id;
+  return WEAPONS.some((w) => w.id === selection) ? selection : current;
+}
+
 /* -------------------------------------------------------------- handlers */
 
 function doLockTarget(
@@ -89,33 +126,81 @@ function doLockTarget(
   return { ok: true, action: "LOCK_TARGET", source, speech, hud: "TARGET LOCKED", detail: { targetId: target.id } };
 }
 
+function doSwitchWeapon(
+  cmd: Extract<GameCommand, { action: "SWITCH_WEAPON" }>,
+  source: CommandSource,
+): CommandResult {
+  const previous = game.get().player.weapon;
+  const weapon = resolveWeapon(cmd.weapon, previous);
+  const spec = weaponSpec(weapon);
+
+  if (weapon === previous) {
+    const speech = `${spokenName(spec)} already selected.`;
+    return { ok: true, action: "SWITCH_WEAPON", source, speech, detail: { weapon, previous, changed: false } };
+  }
+
+  game.get().setPlayer({ weapon });
+  bus.emit("weapon:changed", { weapon, previous });
+  bus.emit("audio:cue", { cue: "WEAPON_SWITCH" });
+  bus.emit("hud:alert", { text: spec.name, level: "INFO" });
+
+  let speech = `${spokenName(spec)} ready.`;
+  const target = currentTarget();
+  if (target && spec.maxRange !== null && target.distance > spec.maxRange) {
+    speech += ` Target at ${Math.round(target.distance)} meters is outside its ${spec.maxRange} meter reach.`;
+  }
+  say(speech);
+  return {
+    ok: true,
+    action: "SWITCH_WEAPON",
+    source,
+    speech,
+    hud: spec.name,
+    detail: { weapon, previous, changed: true },
+  };
+}
+
 function doAttack(
   cmd: Extract<GameCommand, { action: "ATTACK" }>,
   source: CommandSource,
 ): { result: CommandResult; frontal?: boolean } {
+  const deny = (speech: string, detail?: Record<string, unknown>) => ({
+    result: { ok: false, action: "ATTACK" as const, source, speech, detail },
+  });
+
   let target = currentTarget();
   let autoLockPrefix = "";
   if (!target) {
     target = resolveTarget({ type: "NEAREST" });
-    if (!target) {
-      return { result: { ok: false, action: "ATTACK", source, speech: "No hostile contacts in range." } };
-    }
+    if (!target) return deny("No hostile contacts in range.");
     game.get().setTarget(target.id);
     autoLockPrefix = `${target.codename} locked. `;
   }
 
-  const mode = cmd.mode ?? "BURST";
-  const cost = mode === "PRECISION" ? 14 : mode === "BARRAGE" ? 20 : 8;
-  const heatGain = mode === "PRECISION" ? 20 : mode === "BARRAGE" ? 25 : 12;
-  const baseDamage = mode === "PRECISION" ? 34 : mode === "BARRAGE" ? 16 : 22;
-
   const player = game.get().player;
-  if (player.heat >= HEAT_MAX) {
-    return { result: { ok: false, action: "ATTACK", source, speech: "Weapon systems overheated." } };
+  const spec = weaponSpec(player.weapon);
+  const weapon = spec.id;
+  const mode = cmd.mode ?? "BURST";
+
+  // Range gate — MISSILE and BLADE have a hard reach; say what to do about it.
+  if (spec.maxRange !== null && target.distance > spec.maxRange) {
+    bus.emit("audio:cue", { cue: "DENY" });
+    const speech =
+      `${autoLockPrefix}Target at ${Math.round(target.distance)} meters — ${weapon.toLowerCase()} range is ${spec.maxRange}. ` +
+      "Close in or switch weapons.";
+    return deny(speech, { targetId: target.id, weapon, distance: Math.round(target.distance), maxRange: spec.maxRange });
   }
-  if (player.energy < cost) {
-    return { result: { ok: false, action: "ATTACK", source, speech: "Insufficient energy." } };
-  }
+
+  // Modes scale the weapon's base numbers (legacy rifle values: 22/12/8 → 34/20/14 → 16/25/20).
+  const dmgScale = mode === "PRECISION" ? 1.5 : mode === "BARRAGE" ? 0.72 : 1;
+  const heatScale = mode === "PRECISION" ? 1.65 : mode === "BARRAGE" ? 2 : 1;
+  const energyScale = mode === "PRECISION" ? 1.75 : mode === "BARRAGE" ? 2.5 : 1;
+  const cost = Math.round(spec.energy * energyScale);
+  const heatGain = Math.round(spec.heat * heatScale);
+  const baseDamage = spec.damage * dmgScale;
+
+  if (player.heat >= HEAT_MAX) return deny("Weapon systems overheated.");
+  if (player.energy < cost) return deny(`Insufficient energy for the ${weapon.toLowerCase()}.`);
 
   const frontal = Math.abs(target.bearing) <= 30;
   game.get().setPlayer({
@@ -123,24 +208,43 @@ function doAttack(
     heat: Math.min(HEAT_MAX, player.heat + heatGain),
   });
 
-  bus.emit("fx:fire", { targetId: target.id, mode });
+  bus.emit("fx:fire", { targetId: target.id, mode, weapon });
+  bus.emit("audio:cue", { cue: FIRE_CUE[weapon] });
+
+  // Everyone in the bearing cone around the target (and inside the weapon's reach) takes the hit.
+  const coneDeg = spec.splashDeg + (mode === "BARRAGE" ? BARRAGE_EXTRA_CONE_DEG : 0);
+  const anchor = target;
+  const splash =
+    coneDeg > 0
+      ? livingEnemies().filter(
+          (e) =>
+            e.id !== anchor.id &&
+            Math.abs(bearingDelta(e.bearing, anchor.bearing)) <= coneDeg &&
+            (spec.maxRange === null || e.distance <= spec.maxRange),
+        )
+      : [];
+  const victims = [target, ...splash];
+
+  const weakMult = weapon === "CANNON" ? WEAK_POINT_MULT_CANNON : WEAK_POINT_MULT_DEFAULT;
+  const rounds = weapon === "MISSILE" ? MISSILE_SALVO_ROUNDS : 1;
 
   let totalDamage = 0;
   const killed: string[] = [];
-  const applyTo = (enemy: Enemy) => {
-    const dmg = enemy.weakPointOpen ? baseDamage * 1.6 : baseDamage;
-    const out = game.get().damageEnemy(enemy.id, dmg);
-    totalDamage += dmg;
-    if (out.killed) killed.push(enemy.codename);
-  };
+  const dead = new Set<string>();
+  const hit = new Set<string>();
 
-  applyTo(target);
-
-  if (mode === "BARRAGE") {
-    const splash = livingEnemies().filter(
-      (e) => e.id !== target!.id && Math.abs(e.bearing - target!.bearing) <= 25,
-    );
-    for (const e of splash) applyTo(e);
+  for (let round = 0; round < rounds; round++) {
+    for (const enemy of victims) {
+      if (dead.has(enemy.id)) continue;
+      const dmg = enemy.weakPointOpen ? baseDamage * weakMult : baseDamage;
+      const out = game.get().damageEnemy(enemy.id, dmg);
+      totalDamage += dmg;
+      hit.add(enemy.id);
+      if (out.killed) {
+        killed.push(enemy.codename);
+        dead.add(enemy.id);
+      }
+    }
   }
 
   // Special weapon charges from damage dealt.
@@ -148,11 +252,25 @@ function doAttack(
   game.get().setPlayer({ special: Math.min(100, p.special + totalDamage * 0.4) });
 
   bus.emit("hud:alert", {
-    text: killed.length ? `${killed[0]} DESTROYED` : "TARGET HIT",
+    text: killed.length > 1 ? `${killed.length} HOSTILES DESTROYED` : killed.length ? `${killed[0]} DESTROYED` : "TARGET HIT",
     level: killed.length ? "CRIT" : "INFO",
   });
 
-  const verb = mode === "PRECISION" ? "Precision shot" : mode === "BARRAGE" ? "Barrage fired" : "Firing";
+  const others = hit.size - 1;
+  let verb: string;
+  switch (weapon) {
+    case "CANNON":
+      verb = mode === "PRECISION" ? "Heavy cannon, precision round" : "Heavy cannon fired";
+      break;
+    case "MISSILE":
+      verb = others > 0 ? `Missile salvo away, ${others} more in the cone` : "Missile salvo away";
+      break;
+    case "BLADE":
+      verb = "Blade strike";
+      break;
+    default:
+      verb = mode === "PRECISION" ? "Precision shot" : mode === "BARRAGE" ? "Barrage fired" : "Firing";
+  }
   const speech = `${autoLockPrefix}${verb} on ${target.codename}.`;
 
   return {
@@ -162,7 +280,15 @@ function doAttack(
       source,
       speech,
       hud: killed.length ? "TARGET DESTROYED" : undefined,
-      detail: { targetId: target.id, damage: totalDamage, mode, killed },
+      detail: {
+        targetId: target.id,
+        weapon,
+        mode,
+        rounds,
+        damage: Math.round(totalDamage),
+        hits: hit.size,
+        killed,
+      },
     },
     frontal,
   };
@@ -335,6 +461,9 @@ export function executeCommand(cmd: GameCommand, source: CommandSource): Command
         frontal = out.frontal;
         break;
       }
+      case "SWITCH_WEAPON":
+        result = doSwitchWeapon(cmd, source);
+        break;
       case "DEFEND":
         result = doDefend(source);
         break;

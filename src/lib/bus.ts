@@ -24,6 +24,13 @@ export interface BusEvents {
   "fx:fire": { targetId: string | null; mode: string; weapon?: WeaponId };
   /** Pilot switched weapons — HUD selector, viewport arm swap, audio cue. */
   "weapon:changed": { weapon: WeaponId; previous: WeaponId };
+  /**
+   * The mech yawed by `delta` degrees (+ = right). `player.bearing` is the new
+   * absolute heading. Every `Enemy.bearing` (relative to the nose) has ALREADY
+   * been shifted by -delta when this fires; AI modules must shift any cached
+   * relative bearing goals by -delta too.
+   */
+  "player:turned": { delta: number; bearing: number };
   /** Something took damage — viewport draws the burst. */
   "fx:hit": { targetId: string; amount: number; killed: boolean };
   /** Player took damage. */

@@ -1,41 +1,17 @@
 "use client";
 
 import { useGame } from "@/game/store";
+import type { Stance } from "@/game/types";
+import { Gauge, Lamp, lowIsBad, type LampColor } from "./instruments";
 
-const SEGMENTS = 16;
+const STANCES: { id: Stance; label: string; lit: LampColor }[] = [
+  { id: "NEUTRAL", label: "NEUT", lit: "green" },
+  { id: "ASSAULT", label: "ASLT", lit: "amber" },
+  { id: "GUARD", label: "GRD", lit: "green" },
+  { id: "EVADE", label: "EVD", lit: "amber" },
+];
 
-function colorFor(pct: number) {
-  if (pct < 30) return "bg-hud-red";
-  if (pct < 60) return "bg-hud-amber";
-  return "bg-hud-green";
-}
-
-function SegBar({ pct }: { pct: number }) {
-  const clamped = Math.max(0, Math.min(100, pct));
-  const filled = Math.round((clamped / 100) * SEGMENTS);
-  const color = colorFor(clamped);
-  return (
-    <div className="flex gap-[2px]">
-      {Array.from({ length: SEGMENTS }).map((_, i) => (
-        <div key={i} className={`h-3 flex-1 ${i < filled ? color : "bg-hud-line"}`} />
-      ))}
-    </div>
-  );
-}
-
-function Row({ label, pct }: { label: string; pct: number }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
-        <span className="hud-label">{label}</span>
-        <span className="text-xs font-semibold tabular-nums text-hud-white">{Math.round(pct)}%</span>
-      </div>
-      <SegBar pct={pct} />
-    </div>
-  );
-}
-
-/** Structural integrity, armor, stance — the pilot's own body panel. */
+/** Airframe page: structure and armor gauges plus the stance annunciators. */
 export function PilotStatus() {
   const hp = useGame((s) => s.player.hp);
   const maxHp = useGame((s) => s.player.maxHp);
@@ -46,20 +22,27 @@ export function PilotStatus() {
   const critical = hpPct < 30;
 
   return (
-    <div className={`flex h-full flex-col gap-3 p-3 ${critical ? "animate-red-alert" : ""}`}>
-      <Row label="STRUCTURAL INTEGRITY" pct={hpPct} />
-      <Row label="ARMOR" pct={armor} />
+    <div className="flex h-full flex-col justify-between gap-1.5 p-2">
+      <Gauge label="STRUCTURE" value={hpPct} color={lowIsBad(hpPct)} redBand={[0, 30]} compact />
+      <Gauge label="ARMOR PLATE" value={armor} color={lowIsBad(armor)} redBand={[0, 20]} compact />
 
-      <div className="flex items-center justify-between pt-0.5">
-        <span className="hud-label">STANCE</span>
-        <span className="text-glow text-xs font-semibold tracking-[0.2em] text-hud-green">{stance}</span>
-      </div>
-
-      {critical && (
-        <div className="animate-blink mt-auto text-center text-xs font-bold tracking-[0.35em] text-hud-red">
-          CRITICAL
+      <div className="flex items-center justify-between leading-none">
+        <div className="flex items-center gap-[9px]">
+          <span className="mfd-label">STANCE</span>
+          {STANCES.map((s) => (
+            <span key={s.id} className="flex items-center gap-[4px]">
+              <Lamp color={stance === s.id ? s.lit : "off"} size="sm" />
+              <span className={`mfd-label text-[7px] ${stance === s.id ? "text-mfd-text" : ""}`}>{s.label}</span>
+            </span>
+          ))}
         </div>
-      )}
+        <span className="flex items-center gap-[5px]">
+          <Lamp color={critical ? "red" : "green"} size="sm" blink={critical} />
+          <span className={`mfd-num font-mono text-[9px] font-semibold ${critical ? "text-mfd-red mfd-glow-red" : "text-mfd-phosphor mfd-phosphor"}`}>
+            {critical ? "STRUCT CRIT" : "NOMINAL"}
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

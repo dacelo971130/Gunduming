@@ -22,7 +22,7 @@ import type {
 
 const ACTIONS: CommandAction[] = [
   "LOCK_TARGET", "ATTACK", "DEFEND", "EVADE", "BOOST",
-  "RETREAT", "ANALYZE", "SCAN", "STATUS_REPORT", "FIRE_SPECIAL", "SWITCH_WEAPON", "NONE",
+  "RETREAT", "ANALYZE", "SCAN", "STATUS_REPORT", "FIRE_SPECIAL", "SWITCH_WEAPON", "TURN", "NONE",
 ];
 
 function emptyCounts(): Record<CommandAction, number> {

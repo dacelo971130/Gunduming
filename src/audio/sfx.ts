@@ -308,7 +308,7 @@ function cueSpecial(ctx: AudioContext, dest: AudioNode, t0: number): void {
 
   const sg = ctx.createGain();
   sg.connect(dest);
-  const sub = makeOsc(ctx, "sine", 60, sg, t0 + 0.88, t0 + 1.5);
+  makeOsc(ctx, "sine", 60, sg, t0 + 0.88, t0 + 1.5);
   envelope(sg, t0 + 0.88, 0.01, 0.8, 0.6, 0.0001);
 }
 
@@ -323,13 +323,154 @@ function cueVictory(ctx: AudioContext, dest: AudioNode, t0: number): void {
   });
 }
 
+/* ------------------------------------------------------- weapon loadout */
+
+function cueWeaponSwitch(ctx: AudioContext, dest: AudioNode, t0: number): void {
+  // mechanical servo clack — two filtered noise ticks with a low latch thunk between them
+  [
+    { dt: 0, freq: 2600 },
+    { dt: 0.075, freq: 1900 },
+  ].forEach(({ dt, freq }) => {
+    const g = ctx.createGain();
+    const bp = makeFilter(ctx, "bandpass", jitter(freq, 0.06), 6, dest);
+    g.connect(bp);
+    makeNoise(ctx, 0.045, g, t0 + dt);
+    envelope(g, t0 + dt, 0.001, 0.5, 0.04, 0.0001);
+  });
+
+  const tg = ctx.createGain();
+  const lp = makeFilter(ctx, "lowpass", 320, 1.2, dest);
+  tg.connect(lp);
+  const thunk = makeOsc(ctx, "triangle", jitter(150), tg, t0 + 0.07, t0 + 0.22);
+  thunk.frequency.exponentialRampToValueAtTime(jitter(70), t0 + 0.2);
+  envelope(tg, t0 + 0.07, 0.002, 0.5, 0.13, 0.0001);
+
+  // confirm tone — two quick ascending sine notes once the latch seats
+  [
+    { f: 1046.5, dt: 0.17 },
+    { f: 1568, dt: 0.24 },
+  ].forEach(({ f, dt }) => {
+    const g = ctx.createGain();
+    g.connect(dest);
+    makeOsc(ctx, "sine", f, g, t0 + dt, t0 + dt + 0.09);
+    envelope(g, t0 + dt, 0.004, 0.22, 0.085, 0.0001);
+  });
+}
+
+function cueFireCannon(ctx: AudioContext, dest: AudioNode, t0: number): void {
+  const shaper = ctx.createWaveShaper();
+  const curve = createDistortionCurve(18);
+  if (curve) shaper.curve = curve;
+  shaper.connect(dest);
+
+  // deep report — noise through a fast-closing lowpass, soft-clipped
+  const g = ctx.createGain();
+  const lp = makeFilter(ctx, "lowpass", 1200, 0.7, shaper);
+  g.connect(lp);
+  lp.frequency.setValueAtTime(1200, t0);
+  lp.frequency.exponentialRampToValueAtTime(90, t0 + 0.5);
+  makeNoise(ctx, 0.55, g, t0);
+  envelope(g, t0, 0.002, 0.9, 0.45, 0.0001);
+
+  // sub thump
+  const sg = ctx.createGain();
+  sg.connect(dest);
+  const sub = makeOsc(ctx, "sine", jitter(58), sg, t0, t0 + 0.6);
+  sub.frequency.exponentialRampToValueAtTime(26, t0 + 0.55);
+  envelope(sg, t0, 0.003, 0.95, 0.55, 0.0001);
+
+  // muzzle crack — sawtooth dropping fast through the clipper
+  const bg = ctx.createGain();
+  bg.connect(shaper);
+  const body = makeOsc(ctx, "sawtooth", jitter(320), bg, t0, t0 + 0.2);
+  body.frequency.exponentialRampToValueAtTime(jitter(45), t0 + 0.18);
+  envelope(bg, t0, 0.001, 0.5, 0.17, 0.0001);
+
+  // long tail — low rumble rolling off over ~1.4 s
+  const tg = ctx.createGain();
+  const tlp = makeFilter(ctx, "lowpass", 260, 0.8, dest);
+  tg.connect(tlp);
+  makeNoise(ctx, 1.5, tg, t0 + 0.12);
+  envelope(tg, t0 + 0.12, 0.05, 0.35, 1.3, 0.0001);
+}
+
+function cueFireMissile(ctx: AudioContext, dest: AudioNode, t0: number): void {
+  // six rounds, ~70 ms apart — each an ignition pop, a rising whoosh and a motor tone
+  for (let i = 0; i < 6; i++) {
+    const start = t0 + i * 0.07 + Math.random() * 0.008;
+
+    const pg = ctx.createGain();
+    pg.connect(dest);
+    const pop = makeOsc(ctx, "square", jitter(700, 0.1), pg, start, start + 0.04);
+    pop.frequency.exponentialRampToValueAtTime(jitter(140), start + 0.035);
+    envelope(pg, start, 0.001, 0.3, 0.035, 0.0001);
+
+    const wg = ctx.createGain();
+    const bp = makeFilter(ctx, "bandpass", 500, 1.1, dest);
+    wg.connect(bp);
+    bp.frequency.setValueAtTime(jitter(450, 0.1), start);
+    bp.frequency.exponentialRampToValueAtTime(jitter(2600, 0.08), start + 0.12);
+    bp.frequency.exponentialRampToValueAtTime(jitter(900), start + 0.4);
+    makeNoise(ctx, 0.45, wg, start);
+    envelope(wg, start, 0.02, 0.4, 0.38, 0.0001);
+
+    const mg = ctx.createGain();
+    mg.connect(dest);
+    const motor = makeOsc(ctx, "sawtooth", jitter(180, 0.08), mg, start, start + 0.3);
+    motor.frequency.exponentialRampToValueAtTime(jitter(420), start + 0.28);
+    envelope(mg, start, 0.01, 0.12, 0.27, 0.0001);
+  }
+}
+
+function cueFireBlade(ctx: AudioContext, dest: AudioNode, t0: number): void {
+  const shaper = ctx.createWaveShaper();
+  const curve = createDistortionCurve(12);
+  if (curve) shaper.curve = curve;
+  shaper.connect(dest);
+
+  // plasma ignition hum — two detuned saws through an opening lowpass, rising
+  const hg = ctx.createGain();
+  const lp = makeFilter(ctx, "lowpass", 250, 2, shaper);
+  hg.connect(lp);
+  lp.frequency.setValueAtTime(250, t0);
+  lp.frequency.exponentialRampToValueAtTime(3200, t0 + 0.32);
+  const a = makeOsc(ctx, "sawtooth", jitter(110), hg, t0, t0 + 0.5);
+  const b = makeOsc(ctx, "sawtooth", jitter(113), hg, t0, t0 + 0.5);
+  a.frequency.exponentialRampToValueAtTime(jitter(220), t0 + 0.32);
+  b.frequency.exponentialRampToValueAtTime(jitter(226), t0 + 0.32);
+  envelope(hg, t0, 0.18, 0.35, 0.3, 0.0001);
+
+  // slash sweep — bandpass noise arcing up and away
+  const sStart = t0 + 0.28;
+  const sg = ctx.createGain();
+  const bp = makeFilter(ctx, "bandpass", 700, 2.5, dest);
+  sg.connect(bp);
+  bp.frequency.setValueAtTime(700, sStart);
+  bp.frequency.exponentialRampToValueAtTime(4200, sStart + 0.12);
+  bp.frequency.exponentialRampToValueAtTime(500, sStart + 0.3);
+  makeNoise(ctx, 0.35, sg, sStart);
+  envelope(sg, sStart, 0.01, 0.6, 0.3, 0.0001);
+
+  // plasma whine riding the slash
+  const wg = ctx.createGain();
+  wg.connect(dest);
+  const whine = makeOsc(ctx, "sine", jitter(1900), wg, sStart, sStart + 0.3);
+  whine.frequency.exponentialRampToValueAtTime(jitter(380), sStart + 0.28);
+  envelope(wg, sStart, 0.005, 0.25, 0.27, 0.0001);
+
+  // contact ring
+  const rg = ctx.createGain();
+  const rbp = makeFilter(ctx, "bandpass", jitter(1300), 10, dest);
+  rg.connect(rbp);
+  makeOsc(ctx, "square", jitter(1300), rg, sStart + 0.1, sStart + 0.5);
+  envelope(rg, sStart + 0.1, 0.005, 0.2, 0.38, 0.0001);
+}
+
 const BUILDERS: Record<AudioCue, CueBuilder> = {
-  // Weapon-loadout cues: placeholders mapped onto existing sounds until the
-  // weapons engineer synthesizes dedicated ones (see docs/REDESIGN.md).
-  WEAPON_SWITCH: cueBeep,
-  FIRE_CANNON: cueFire,
-  FIRE_MISSILE: cueFire,
-  FIRE_BLADE: cueFire,
+  WEAPON_SWITCH: cueWeaponSwitch,
+  FIRE_CANNON: cueFireCannon,
+  FIRE_MISSILE: cueFireMissile,
+  FIRE_BLADE: cueFireBlade,
   WAKE: cueWake,
   BOOT_TICK: cueBootTick,
   BOOT_DONE: cueBootDone,
@@ -349,9 +490,24 @@ const BUILDERS: Record<AudioCue, CueBuilder> = {
   VICTORY: cueVictory,
 };
 
+/**
+ * Minimum spacing per cue. A missile salvo lands six rounds on every unit in
+ * the cone in the same tick, and the store emits one IMPACT per hit — a dozen
+ * identical impacts stacked at t=0 would just be one impact twelve times too
+ * loud, so collapse anything inside the window into the first.
+ */
+const MIN_GAP_MS: Partial<Record<AudioCue, number>> = { IMPACT: 60, EXPLOSION: 40 };
+const lastPlayedAt: Partial<Record<AudioCue, number>> = {};
+
 /** Play a synthesized cue immediately. Never throws. */
 export function playCue(cue: AudioCue): void {
   safeAudio(() => {
+    const gap = MIN_GAP_MS[cue];
+    if (gap) {
+      const t = Date.now();
+      if (t - (lastPlayedAt[cue] ?? 0) < gap) return;
+      lastPlayedAt[cue] = t;
+    }
     const ctx = getCtx();
     const sfxBus = getSfxBus();
     if (!ctx || !sfxBus) return;

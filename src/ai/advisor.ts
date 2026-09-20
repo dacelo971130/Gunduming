@@ -1,12 +1,18 @@
 /**
- * Proactive co-pilot lines. Called by the engine when something noteworthy
- * happens (SURROUNDED, LOW_ARMOR, ...). Goes through the same /api/copilot
- * route as normal orders (mode: "advice"), so the API key never has to be
- * read from this file. Never throws — always resolves to a usable string,
- * "" meaning "stay silent right now" (rate-limited or already speaking).
+ * Proactive co-pilot lines. Called when something noteworthy happens
+ * (SURROUNDED, LOW_ARMOR, a weapon-doctrine moment...). Goes through the same
+ * /api/copilot route as normal orders (mode: "advice"), so the API key never
+ * has to be read from this file. Never throws — always resolves to a usable
+ * string, "" meaning "stay silent right now" (rate-limited or already speaking).
+ *
+ * `startWeaponAdvisor()` is the watcher that detects the three weapon-doctrine
+ * moments from the store and speaks the resulting line; the director starts
+ * it for the session.
  */
-import type { GameSnapshot } from "@/game/types";
+import type { GameSnapshot, Phase } from "@/game/types";
 import { game } from "@/game/store";
+import { say } from "@/lib/bus";
+import { weaponSpec } from "@/lib/config";
 
 export type AdviceTrigger =
   | "SURROUNDED"
@@ -14,7 +20,10 @@ export type AdviceTrigger =
   | "BOSS_FLANKING"
   | "WEAK_POINT"
   | "WAVE_CLEARED"
-  | "IDLE_CHECK";
+  | "IDLE_CHECK"
+  | "BLADE_RANGE"
+  | "CANNON_OPENING"
+  | "MISSILE_CLUSTER";
 
 /** Hand-written fallback line per trigger, used whenever the LLM is unavailable. */
 export const ADVICE_FALLBACK_LINES: Record<AdviceTrigger, string> = {
@@ -24,6 +33,9 @@ export const ADVICE_FALLBACK_LINES: Record<AdviceTrigger, string> = {
   WEAK_POINT: "I detected a temporary opening in the enemy's defense.",
   WAVE_CLEARED: "Wave cleared, Pilot. Systems nominal — stand by for the next contact.",
   IDLE_CHECK: "All quiet, Pilot. No immediate threats on scope.",
+  BLADE_RANGE: "Target inside blade range, Pilot. Switch to the plasma blade and finish it.",
+  CANNON_OPENING: "Weak point exposed. The heavy cannon would break it — switch and fire before it closes.",
+  MISSILE_CLUSTER: "Three or more contacts bunched in the cone, Pilot. One missile salvo would hit them all.",
 };
 
 const RATE_LIMIT_MS = 8000;
@@ -69,4 +81,124 @@ export async function requestAdvice(trigger: AdviceTrigger, snapshot: GameSnapsh
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/* ------------------------------------------------------- weapon doctrine */
+
+const WEAPON_ADVICE_POLL_MS = 400;
+/** Per-trigger quiet period on top of requestAdvice's global 8s limit. */
+const WEAPON_ADVICE_COOLDOWN_MS = 20000;
+const WEAPON_ADVICE_PHASES = new Set<Phase>(["COMBAT", "BOSS"]);
+
+function bearingDelta(a: number, b: number): number {
+  return ((a - b + 540) % 360) - 180;
+}
+
+/**
+ * Watches the store for the three weapon-doctrine moments and speaks a
+ * throttled callout for each — edge-triggered, so a target sitting inside
+ * blade range nags once, not every tick:
+ *
+ *   BLADE_RANGE     locked target enters blade range while another weapon is selected
+ *   CANNON_OPENING  a weak point opens while the cannon is NOT selected
+ *   MISSILE_CLUSTER 3+ living enemies inside the missile cone while missiles are NOT selected
+ *
+ * Runs only during COMBAT/BOSS. Returns a stop function. Safe on the server (no-op).
+ */
+export function startWeaponAdvisor(): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  const lastFiredAt: Partial<Record<AdviceTrigger, number>> = {};
+  let bladeArmed = true;
+  let clusterArmed = true;
+  const calledOpenings = new Set<string>();
+  let inFlight = false;
+
+  /**
+   * Speak one doctrine line. `rearm` re-opens the edge when the line was
+   * suppressed (global 8 s limiter, ECHO-01 already speaking, request in
+   * flight) so the moment is retried on a later tick instead of being lost;
+   * the per-trigger cooldown only starts once a line was actually spoken.
+   */
+  const callout = (trigger: AdviceTrigger, rearm: () => void): void => {
+    if (Date.now() - (lastFiredAt[trigger] ?? 0) < WEAPON_ADVICE_COOLDOWN_MS) return;
+    if (inFlight) {
+      rearm();
+      return;
+    }
+    inFlight = true;
+    requestAdvice(trigger, game.snapshot())
+      .then((speech) => {
+        if (speech) {
+          say(speech);
+          lastFiredAt[trigger] = Date.now();
+        } else {
+          rearm();
+        }
+      })
+      .catch(() => {
+        rearm(); // requestAdvice is total; this is belt and braces
+      })
+      .finally(() => {
+        inFlight = false;
+      });
+  };
+
+  const tick = (): void => {
+    try {
+      const s = game.get();
+      if (!WEAPON_ADVICE_PHASES.has(s.phase)) return;
+      const living = s.enemies.filter((e) => e.state !== "DESTROYED");
+      const weapon = s.player.weapon;
+      const target = s.targetId ? living.find((e) => e.id === s.targetId) ?? null : null;
+
+      // 1. Locked target enters blade range.
+      const bladeRange = weaponSpec("BLADE").maxRange ?? 260;
+      if (target && target.distance <= bladeRange) {
+        if (bladeArmed && weapon !== "BLADE") {
+          bladeArmed = false;
+          callout("BLADE_RANGE", () => {
+            bladeArmed = true;
+          });
+        }
+      } else {
+        bladeArmed = true;
+      }
+
+      // 2. A weak point opens while the cannon is not up (once per opening).
+      for (const e of living) {
+        if (e.weakPointOpen) {
+          if (!calledOpenings.has(e.id)) {
+            calledOpenings.add(e.id);
+            if (weapon !== "CANNON") callout("CANNON_OPENING", () => calledOpenings.delete(e.id));
+          }
+        } else {
+          calledOpenings.delete(e.id);
+        }
+      }
+
+      // 3. Three or more contacts inside the missile cone (and reach).
+      const missile = weaponSpec("MISSILE");
+      const reach = missile.maxRange ?? Number.POSITIVE_INFINITY;
+      const inReach = living.filter((e) => e.distance <= reach);
+      const clustered = inReach.some(
+        (anchor) => inReach.filter((e) => Math.abs(bearingDelta(e.bearing, anchor.bearing)) <= missile.splashDeg).length >= 3,
+      );
+      if (clustered) {
+        if (clusterArmed && weapon !== "MISSILE") {
+          clusterArmed = false;
+          callout("MISSILE_CLUSTER", () => {
+            clusterArmed = true;
+          });
+        }
+      } else {
+        clusterArmed = true;
+      }
+    } catch (err) {
+      console.error("[ai/advisor] weapon advisor tick threw", err);
+    }
+  };
+
+  const timer = window.setInterval(tick, WEAPON_ADVICE_POLL_MS);
+  return () => window.clearInterval(timer);
 }

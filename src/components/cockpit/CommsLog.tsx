@@ -5,12 +5,21 @@ import { useGame } from "@/game/store";
 import type { LogLevel } from "@/game/types";
 
 const LEVEL_STYLE: Record<LogLevel, string> = {
-  SYS: "text-hud-gray",
-  INFO: "text-hud-green",
-  WARN: "text-hud-amber",
-  CRIT: "font-semibold text-hud-red",
-  AI: "text-glow text-hud-green-glow",
-  PILOT: "text-hud-white",
+  SYS: "text-mfd-muted",
+  INFO: "text-mfd-phosphor",
+  WARN: "text-mfd-amber",
+  CRIT: "font-bold text-mfd-red mfd-glow-red",
+  AI: "text-mfd-phosphor mfd-phosphor",
+  PILOT: "text-mfd-text",
+};
+
+const LEVEL_TAG: Record<LogLevel, string> = {
+  SYS: "SYS ",
+  INFO: "INFO",
+  WARN: "WARN",
+  CRIT: "CRIT",
+  AI: "ECHO",
+  PILOT: "PLT ",
 };
 
 function fmtTime(at: number) {
@@ -18,11 +27,11 @@ function fmtTime(at: number) {
   return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => n.toString().padStart(2, "0")).join(":");
 }
 
-/** Last ~10 log lines, newest at the bottom, auto-scrolled, colour-coded. */
+/** Message printer: timestamped lines feed in at the bottom, newest last. */
 export function CommsLog() {
   const log = useGame((s) => s.log);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const entries = log.slice(-10);
+  const entries = log.slice(-14);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -30,15 +39,33 @@ export function CommsLog() {
   }, [entries.length]);
 
   return (
-    <div ref={scrollRef} className="h-full min-h-0 space-y-1 overflow-y-auto p-2.5 text-[10px] leading-relaxed">
-      {entries.length === 0 && <div className="text-hud-dim">NO TRANSMISSIONS</div>}
-      {entries.map((e) => (
-        <div key={e.id} className="flex gap-1.5">
-          <span className="shrink-0 tabular-nums text-hud-dim">{fmtTime(e.at)}</span>
-          <span className={`shrink-0 font-semibold ${LEVEL_STYLE[e.level]}`}>{e.level}</span>
-          <span className={LEVEL_STYLE[e.level]}>{e.text}</span>
+    <div className="relative h-full min-h-0">
+      <div
+        ref={scrollRef}
+        className="mfd-num h-full min-h-0 overflow-y-auto px-2.5 pb-4 pt-1.5 font-mono text-[9.5px] leading-[15px]"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(to bottom, transparent 0px, transparent 14px, rgba(134,207,159,0.05) 14px, rgba(134,207,159,0.05) 15px)",
+          backgroundPosition: "0 6px",
+        }}
+      >
+        {entries.length === 0 && <div className="text-mfd-muted">-- NO TRAFFIC --</div>}
+        {entries.map((e) => (
+          <div key={e.id} className="flex gap-2">
+            <span className="shrink-0 text-mfd-muted">{fmtTime(e.at)}</span>
+            <span className={`shrink-0 whitespace-pre font-semibold ${LEVEL_STYLE[e.level]}`}>{LEVEL_TAG[e.level]}</span>
+            <span className={`min-w-0 break-words ${LEVEL_STYLE[e.level]}`}>{e.text}</span>
+          </div>
+        ))}
+        <div className="flex gap-2 text-mfd-phosphor-dim">
+          <span className="animate-blink">▍</span>
         </div>
-      ))}
+      </div>
+      {/* print-head shadow at the feed edge */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-4"
+        style={{ background: "linear-gradient(180deg, transparent, rgba(0,0,0,0.6))" }}
+      />
     </div>
   );
 }

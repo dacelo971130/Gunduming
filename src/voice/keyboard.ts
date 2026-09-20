@@ -5,6 +5,9 @@
  * voice command has a key, plus rehearsal keys to jump phases and reset.
  * Ignored entirely while an input/textarea/contenteditable has focus so the
  * VoiceBar text box (and any other input) can be typed into normally.
+ *
+ * Weapons: `q` cycles to the next weapon, `w` to the previous one (WEAPONS
+ * order in config.ts). Digits stay rehearsal keys.
  */
 import type { GameCommand } from "@/game/types";
 import { game } from "@/game/store";
@@ -54,6 +57,12 @@ export function attachKeyboardFallback(opts: KeyboardHandlerOptions): () => void
       case " ":
         e.preventDefault();
         opts.onCommand({ action: "ATTACK" });
+        break;
+      case "q":
+        opts.onCommand({ action: "SWITCH_WEAPON", weapon: "NEXT" });
+        break;
+      case "w":
+        opts.onCommand({ action: "SWITCH_WEAPON", weapon: "PREVIOUS" });
         break;
       case "d":
         opts.onCommand({ action: "DEFEND" });

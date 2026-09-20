@@ -88,6 +88,7 @@ const CommandActionSchema = z.enum([
   "STATUS_REPORT",
   "FIRE_SPECIAL",
   "SWITCH_WEAPON",
+  "TURN",
   "NONE",
 ]);
 
@@ -112,7 +113,17 @@ const GameSnapshotSchema = z.object({
   recentLog: z.array(z.string()),
 });
 
-const AdviceTriggerSchema = z.enum(["SURROUNDED", "LOW_ARMOR", "BOSS_FLANKING", "WEAK_POINT", "WAVE_CLEARED", "IDLE_CHECK"]);
+const AdviceTriggerSchema = z.enum([
+  "SURROUNDED",
+  "LOW_ARMOR",
+  "BOSS_FLANKING",
+  "WEAK_POINT",
+  "WAVE_CLEARED",
+  "IDLE_CHECK",
+  "BLADE_RANGE",
+  "CANNON_OPENING",
+  "MISSILE_CLUSTER",
+]);
 
 const RequestSchema = z.object({
   transcript: z.string(),

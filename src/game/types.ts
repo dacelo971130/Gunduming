@@ -139,6 +139,8 @@ export type GameCommand =
   | { action: "STATUS_REPORT" }
   | { action: "FIRE_SPECIAL" }
   | { action: "SWITCH_WEAPON"; weapon: WeaponId | "NEXT" | "PREVIOUS" }
+  /** Yaw the mech. `degrees` defaults to 30 for LEFT/RIGHT; TARGET faces the locked (or nearest) enemy. */
+  | { action: "TURN"; direction: "LEFT" | "RIGHT" | "TARGET"; degrees?: number }
   | { action: "NONE" };
 
 export type CommandAction = GameCommand["action"];

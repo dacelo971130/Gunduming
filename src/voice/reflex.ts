@@ -1,10 +1,13 @@
 /**
- * VOICE — the fast local path. Pure, synchronous, no I/O. Returning `null`
- * means "not a combat-critical verb" — that is the signal to escalate to the
- * LLM (NEURAL path). Keep this file dependency-free besides shared types.
+ * VOICE — the fast local path. Pure regex matching, synchronous, no I/O.
+ * Returning `null` means "not a combat-critical verb" — that is the signal to
+ * escalate to the LLM (NEURAL path). The only state it reads is the selected
+ * weapon (so "fire the cannon" can mean ATTACK when the cannon is already up),
+ * and that read is guarded so the matcher can never throw.
  */
 import { WAKE_WORDS } from "@/lib/config";
-import type { GameCommand, TargetSelector } from "@/game/types";
+import { game } from "@/game/store";
+import type { GameCommand, TargetSelector, WeaponId } from "@/game/types";
 
 /* --------------------------------------------------------------- normalise */
 
@@ -93,6 +96,53 @@ function parseBoostDirection(text: string): "FORWARD" | "LEFT" | "RIGHT" | "BACK
   return undefined;
 }
 
+function parseAttackMode(text: string): "PRECISION" | "BARRAGE" | undefined {
+  if (/\b(precision|aimed|careful)\b/.test(text)) return "PRECISION";
+  if (/\b(barrage|spread|everything)\b/.test(text) || text.includes("all of them")) return "BARRAGE";
+  return undefined;
+}
+
+/* --------------------------------------------------------------- weapons */
+
+type WeaponSelection = WeaponId | "NEXT" | "PREVIOUS";
+
+/**
+ * Weapon nouns (with the usual speech-to-text mangling) and cycle phrases.
+ * Named weapons win over "next/previous" so "switch weapon to cannon" is CANNON.
+ *
+ *   CANNON   cannon(s) · canon · heavy cannon · heavy gun · big gun
+ *   MISSILE  missile(s) · missle(s) · missile pod · rocket(s)
+ *   BLADE    blade(s) · sword(s) · melee · saber/sabre
+ *   RIFLE    rifle(s) · riffle · linear (rifle)
+ *   PREVIOUS previous/prev/last weapon(s)/gun(s)
+ *   NEXT     next/swap/change/switch/cycle/other/another weapon(s)/gun(s)/loadout · switch weapons
+ */
+function parseWeapon(text: string): WeaponSelection | null {
+  if (/\b(cannons?|canon|heavy gun|big gun)\b/.test(text)) return "CANNON";
+  if (/\b(missiles?|missles?|rockets?)\b/.test(text)) return "MISSILE";
+  if (/\b(blades?|swords?|melee|saber|sabre)\b/.test(text)) return "BLADE";
+  if (/\b(rifles?|riffle|linear)\b/.test(text)) return "RIFLE";
+  if (/\b(previous|prev|last) (weapons?|guns?)\b/.test(text)) return "PREVIOUS";
+  if (
+    /\b(next|swap|change|switch|cycle|other|another|different) (weapons?|guns?|loadout)\b/.test(text) ||
+    /\b(weapons?|guns?) (next|swap|change|switch|cycle)\b/.test(text)
+  ) {
+    return "NEXT";
+  }
+  return null;
+}
+
+/** Fire verbs that make sense with a weapon noun ("launch missiles", "blade strike"). */
+const WEAPON_FIRE_VERB = /\b(fire|attack|shoot|engage|launch|strike|slash|cut|swing|hit)\b/;
+
+function currentWeapon(): WeaponId | null {
+  try {
+    return game.get().player.weapon;
+  } catch {
+    return null;
+  }
+}
+
 /* ------------------------------------------------------------------ match */
 
 export function matchReflex(text: string): GameCommand | null {
@@ -144,6 +194,18 @@ export function matchReflex(text: string): GameCommand | null {
     return { action: "RETREAT" };
   }
 
+  // SWITCH_WEAPON — a weapon noun anywhere in the phrase selects that weapon.
+  // "fire the cannon" while the cannon is already up is an ATTACK; while another
+  // weapon is up it switches (ECHO-01 answers "Heavy cannon ready." — say "fire" next).
+  const weapon = parseWeapon(norm);
+  if (weapon) {
+    if (weapon !== "NEXT" && weapon !== "PREVIOUS" && WEAPON_FIRE_VERB.test(norm) && currentWeapon() === weapon) {
+      const mode = parseAttackMode(norm);
+      return mode ? { action: "ATTACK", mode } : { action: "ATTACK" };
+    }
+    return { action: "SWITCH_WEAPON", weapon };
+  }
+
   // LOCK_TARGET — bare "lock"/"lock it" falls through parseSelector's NEAREST default.
   if (/\b(lock|target|acquire)\b/.test(norm)) {
     return { action: "LOCK_TARGET", target: parseSelector(norm) };
@@ -155,13 +217,8 @@ export function matchReflex(text: string): GameCommand | null {
     norm.includes("take it down") ||
     norm.includes("open fire")
   ) {
-    if (/\b(precision|aimed|careful)\b/.test(norm)) {
-      return { action: "ATTACK", mode: "PRECISION" };
-    }
-    if (/\b(barrage|spread|everything)\b/.test(norm) || norm.includes("all of them")) {
-      return { action: "ATTACK", mode: "BARRAGE" };
-    }
-    return { action: "ATTACK" };
+    const mode = parseAttackMode(norm);
+    return mode ? { action: "ATTACK", mode } : { action: "ATTACK" };
   }
 
   // DEFEND

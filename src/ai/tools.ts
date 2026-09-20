@@ -4,6 +4,7 @@
  * field is validated before it becomes a command.
  */
 import type Anthropic from "@anthropic-ai/sdk";
+import { WEAPONS } from "@/lib/config";
 import type { GameCommand, TargetSelector } from "@/game/types";
 
 type ToolInput = Record<string, unknown>;
@@ -53,11 +54,25 @@ function isBoostDirection(v: unknown): v is BoostDirection {
   return typeof v === "string" && (BOOST_DIRECTIONS as readonly string[]).includes(v);
 }
 
+const WEAPON_CHOICES = [...WEAPONS.map((w) => w.id), "NEXT", "PREVIOUS"] as const;
+type WeaponChoice = (typeof WEAPON_CHOICES)[number];
+function isWeaponChoice(v: unknown): v is WeaponChoice {
+  return typeof v === "string" && (WEAPON_CHOICES as readonly string[]).includes(v);
+}
+
 const SELECTOR_SCHEMA = {
   type: "string" as const,
   enum: [...SELECTOR_VALUES],
   description:
     "How to pick the enemy: NEAREST, FARTHEST, LEFT, RIGHT, FRONT, REAR, STRONGEST, WEAKEST, RED_ACE (the boss), or ID (use the id field).",
+};
+
+const WEAPON_SCHEMA = {
+  type: "string" as const,
+  enum: [...WEAPON_CHOICES],
+  description:
+    WEAPONS.map((w) => `${w.id} = ${w.name}: ${w.role}`).join(" | ") +
+    " | NEXT / PREVIOUS cycle the loadout in that order.",
 };
 
 /** Tool set mirroring every non-NONE GameCommand action. */
@@ -76,7 +91,8 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "attack",
-    description: "Fire on the currently locked target.",
+    description:
+      "Fire the currently selected weapon on the locked target (auto-locks the nearest if none). Call switch_weapon first when the pilot names a different weapon.",
     input_schema: {
       type: "object",
       properties: {
@@ -86,6 +102,16 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
           description: "BURST (default, balanced), PRECISION (single high-accuracy shot), BARRAGE (wide spread).",
         },
       },
+    },
+  },
+  {
+    name: "switch_weapon",
+    description:
+      "Select a weapon from the AETHER FRAME loadout, or cycle NEXT/PREVIOUS. Use when the pilot names a weapon or asks for one by role (heavier, close-quarters, anti-armor, something for a group).",
+    input_schema: {
+      type: "object",
+      properties: { weapon: WEAPON_SCHEMA },
+      required: ["weapon"],
     },
   },
   {
@@ -157,6 +183,8 @@ export function commandFromToolUse(name: string, rawInput: unknown): GameCommand
       const mode = isAttackMode(input.mode) ? input.mode : undefined;
       return { action: "ATTACK", mode };
     }
+    case "switch_weapon":
+      return isWeaponChoice(input.weapon) ? { action: "SWITCH_WEAPON", weapon: input.weapon } : null;
     case "defend":
       return { action: "DEFEND" };
     case "evade":

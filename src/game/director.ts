@@ -4,7 +4,7 @@
  */
 import { bus, say } from "@/lib/bus";
 import { game } from "@/game/store";
-import { SUBSYSTEMS } from "@/lib/config";
+import { SUBSYSTEMS, weaponSpec } from "@/lib/config";
 import type { Phase } from "@/game/types";
 import { spawnBoss, spawnWave } from "@/game/waves";
 
@@ -12,8 +12,11 @@ const PANEL_ORDER = ["radar", "system", "mission", "weapons", "comms", "ai-core"
 const PANEL_GAP_MS = 450;
 const BRIEFING_LINE_GAP_MS = 2600;
 const BOSS_ARRIVAL_DELAY_MS = 2600;
+/** Delay after "hostiles detected" before ECHO-01 mentions the loadout once. */
+const LOADOUT_BEAT_DELAY_MS = 3800;
 
 let timers: ReturnType<typeof setTimeout>[] = [];
+let loadoutBeatDone = false;
 
 function after(ms: number, fn: () => void): void {
   const id = setTimeout(() => {
@@ -51,6 +54,12 @@ function missionLine(): string {
   return `Mission briefing: ${mission.sector}. ${mission.objective}`;
 }
 
+function loadoutLine(): string {
+  const name = weaponSpec(game.get().player.weapon).name.toLowerCase();
+  const selected = name.charAt(0).toUpperCase() + name.slice(1);
+  return `${selected} selected. Say cannon, missiles, or blade to switch weapons.`;
+}
+
 /* ------------------------------------------------------------- per-phase */
 
 function runCockpitBoot(): void {
@@ -86,6 +95,12 @@ function runCombat(): void {
   bus.emit("audio:bgm", { track: "COMBAT" });
   bus.emit("hud:alert", { text: "HOSTILES DETECTED", level: "WARN" });
   say("Pilot, multiple hostile units detected.");
+  // One-time loadout beat so the pilot knows the weapon options exist. Only on
+  // the first COMBAT entry of a session — wave-to-wave it stays quiet.
+  if (!loadoutBeatDone) {
+    loadoutBeatDone = true;
+    after(LOADOUT_BEAT_DELAY_MS, () => say(loadoutLine()));
+  }
 }
 
 function runBossIntro(): void {
@@ -106,6 +121,19 @@ function runVictory(): void {
 }
 
 export function runDirector(): () => void {
+  // The weapon-doctrine advisor (blade range / cannon opening / missile cluster)
+  // lives in the NEURAL layer; load it lazily so a failing module never blocks the show.
+  let stopWeaponAdvisor: (() => void) | null = null;
+  let disposed = false;
+  import("@/ai/advisor")
+    .then((mod) => {
+      if (disposed) return;
+      stopWeaponAdvisor = mod.startWeaponAdvisor();
+    })
+    .catch((err) => {
+      console.error("[director] weapon advisor unavailable", err);
+    });
+
   const unsubscribe = bus.on("phase:changed", ({ phase }) => {
     clearTimers(); // a phase change supersedes any pending steps queued for the previous phase
     switch (phase) {
@@ -130,6 +158,8 @@ export function runDirector(): () => void {
   });
 
   return () => {
+    disposed = true;
+    stopWeaponAdvisor?.();
     clearTimers();
     unsubscribe();
   };
@@ -139,6 +169,7 @@ export function runDirector(): () => void {
 export function skipTo(phase: Phase): void {
   clearTimers();
   const store = game.get();
+  if (phase === "STANDBY") loadoutBeatDone = false;
 
   if (phase !== "STANDBY" && phase !== "WAKE" && phase !== "BOOT") {
     for (const panel of PANEL_ORDER) store.bringPanelOnline(panel);
