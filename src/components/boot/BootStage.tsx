@@ -7,8 +7,9 @@ import { WakeFlash } from "./WakeFlash";
 import { LetterExpansion } from "./LetterExpansion";
 import { ReactorIgnition } from "./ReactorIgnition";
 import { SubsystemLoad } from "./SubsystemLoad";
+import { MechReveal } from "@/components/viewport/MechReveal";
 
-type BootSubStage = "LETTERS" | "REACTOR" | "SUBSYSTEMS";
+type BootSubStage = "LETTERS" | "REACTOR" | "REVEAL" | "SUBSYSTEMS";
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -46,7 +47,23 @@ export function BootStage() {
   const goWake = useCallback(() => setPhase("WAKE"), [setPhase]);
   const goBoot = useCallback(() => setPhase("BOOT"), [setPhase]);
   const goReactor = useCallback(() => setBootSub("REACTOR"), []);
+  const goReveal = useCallback(() => setBootSub("REVEAL"), []);
   const goSubsystems = useCallback(() => setBootSub("SUBSYSTEMS"), []);
+
+  // The full-body reveal is the one beat with no keyboard fallback of its own
+  // besides Escape — Space/Enter skip it like every other boot beat, so a
+  // pilot on stage is never stuck watching it if something looks wrong.
+  useEffect(() => {
+    if (phase !== "BOOT" || bootSub !== "REVEAL") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space" || e.key === "Enter") {
+        e.preventDefault();
+        setBootSub("SUBSYSTEMS");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, bootSub]);
   const goCockpit = useCallback(() => setPhase("COCKPIT_BOOT"), [setPhase]);
 
   if (phase === "STANDBY") {
@@ -62,7 +79,10 @@ export function BootStage() {
       return <LetterExpansion onAdvance={goReactor} reducedMotion={reducedMotion} />;
     }
     if (bootSub === "REACTOR") {
-      return <ReactorIgnition onAdvance={goSubsystems} reducedMotion={reducedMotion} />;
+      return <ReactorIgnition onAdvance={reducedMotion ? goSubsystems : goReveal} reducedMotion={reducedMotion} />;
+    }
+    if (bootSub === "REVEAL") {
+      return <MechReveal onDone={goSubsystems} />;
     }
     return <SubsystemLoad onAdvance={goCockpit} reducedMotion={reducedMotion} />;
   }
