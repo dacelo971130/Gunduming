@@ -404,13 +404,13 @@ export function buildHeroForearm(side: number, mats: MatSet, u = 1): THREE.Group
   if (side < 0) {
     // slab shield on the outer face of the left forearm, leaning outward so its trim is seen from the cockpit
     const sx = -1.7 * u;
-    const lean = 0.42;
-    b.box(0.5 * u, 6.4 * u, 4.6 * u, sx, 0.6 * u, -len * 0.55, "white", [0, 0, lean]);
-    b.box(0.6 * u, 6.5 * u, 0.4 * u, sx, 0.6 * u, -len * 0.55 + 2.3 * u, "frame", [0, 0, lean]); // leading edge
+    const lean = 0.7; // leans well outward so the pilot sees its top edge and trim, not a wall
+    b.box(0.5 * u, 5.2 * u, 3.9 * u, sx, 0.4 * u, -len * 0.55, "white", [0, 0, lean]);
+    b.box(0.6 * u, 5.3 * u, 0.4 * u, sx, 0.4 * u, -len * 0.55 + 1.95 * u, "frame", [0, 0, lean]); // leading edge
     for (const face of [-0.28, 0.28]) {
-      b.box(0.14 * u, 3.0 * u, 3.6 * u, sx + face * u, 1.0 * u, -len * 0.55, "blue", [0, 0, lean]);
-      b.box(0.14 * u, 0.9 * u, 3.4 * u, sx + face * u, -1.6 * u, -len * 0.55, "red", [0, 0, lean]);
-      b.box(0.14 * u, 1.4 * u, 1.3 * u, sx + face * u, 2.8 * u, -len * 0.55, "yellow", [0, 0, lean]);
+      b.box(0.14 * u, 2.4 * u, 3.0 * u, sx + face * u, 0.8 * u, -len * 0.55, "blue", [0, 0, lean]);
+      b.box(0.14 * u, 0.8 * u, 2.9 * u, sx + face * u, -1.3 * u, -len * 0.55, "red", [0, 0, lean]);
+      b.box(0.14 * u, 1.2 * u, 1.1 * u, sx + face * u, 2.3 * u, -len * 0.55, "yellow", [0, 0, lean]);
     }
     b.cyl(0.32 * u, 0.32 * u, 1.2 * u, 24, sx * 0.6, 0.4 * u, -len * 0.55, "frame", [0, 0, Math.PI / 2]); // mount
   }

@@ -19,9 +19,11 @@ import { clamp, damp } from "./math";
 export const FRAME_DEPTH = 1.25;
 /** Pilot's-eye forearm placement (camera space). */
 const ARM_SCALE = 0.62;
-const ARM_X = 2.6;
+const ARM_X = 2.4;
 const ARM_Y = -2.9;
-const ARM_Z = -6.4;
+const ARM_Z = -6.2;
+/** Yaw toward the centreline so the weapon points at the reticle (positive = far end swings left). */
+const ARM_YAW = 0.3;
 /** Far end (hand + weapon) pitched down so the pilot looks onto the decorated top plates. */
 const ARM_TILT = -0.42;
 const RIGHT_HAND: WeaponId[] = ["RIFLE", "INCENDIARY", "BLADE"];
@@ -216,9 +218,9 @@ export class CockpitRig {
     this.armR.scale.setScalar(ARM_SCALE);
     this.armL.scale.setScalar(ARM_SCALE);
     this.armR.position.set(ARM_X, ARM_Y, ARM_Z);
-    this.armR.rotation.set(ARM_TILT, -0.16, 0.12);
+    this.armR.rotation.set(ARM_TILT, ARM_YAW, 0.12);
     this.armL.position.set(-ARM_X, ARM_Y, ARM_Z);
-    this.armL.rotation.set(ARM_TILT, 0.16, -0.12);
+    this.armL.rotation.set(ARM_TILT, -ARM_YAW, -0.12);
     this.armR.add(buildHeroForearm(1, m));
     this.armL.add(buildHeroForearm(-1, m));
     this.arms.add(this.armR, this.armL);
@@ -425,12 +427,12 @@ export class CockpitRig {
     const leftHeld = LEFT_HAND.includes(this.current);
     const rR = this.recoilR * this.recoilR;
     this.armR.position.set(ARM_X + swayX, ARM_Y + swayY - drop * (rightHeld ? 1 : 0), ARM_Z + rR * 0.7);
-    this.armR.rotation.set(ARM_TILT + rR * 0.12, -0.16, 0.12);
+    this.armR.rotation.set(ARM_TILT + rR * 0.12, ARM_YAW, 0.12);
     const rL = this.recoilL * this.recoilL;
     // The designator is held up toward the canopy; the pod/shield arm stays low.
     const raise = this.current === "FLEET_CANNON" ? swap * 0.55 : 0;
     this.armL.position.set(-ARM_X + swayX, ARM_Y + swayY - drop * (leftHeld ? 1 : 0) + raise * 1.6, ARM_Z + rL * 0.4 + raise * 1.2);
-    this.armL.rotation.set(ARM_TILT + rL * 0.06 - raise * 0.5, 0.16 + raise * 0.25, -0.12);
+    this.armL.rotation.set(ARM_TILT + rL * 0.06 - raise * 0.5, -ARM_YAW + raise * 0.25, -0.12);
 
     const rn = this.recoilNuke * this.recoilNuke;
     const nuke = this.weapons.NUKE.children[0];

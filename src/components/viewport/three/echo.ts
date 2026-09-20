@@ -114,12 +114,13 @@ export class Echo01 {
       const socket = new THREE.Mesh(socketGeo, darkGreen);
       const core = new THREE.Mesh(coreGeo, this.eyeCoreMat);
       core.position.z = r * 0.05;
+      const front = r * 0.05 + eyeR * 0.55; // front pole of the squashed eye-white
       const iris = new THREE.Mesh(irisGeo, this.irisMat);
-      iris.position.z = r * 0.1;
+      iris.position.z = front - eyeR * 0.05;
       const pup = new THREE.Mesh(pupilGeo, pupil);
-      pup.position.z = r * 0.11;
+      pup.position.z = front + eyeR * 0.02;
       const dot = new THREE.Mesh(dotGeo, highlight);
-      dot.position.set(-eyeR * 0.3, eyeR * 0.3, r * 0.15);
+      dot.position.set(-eyeR * 0.3, eyeR * 0.3, front + eyeR * 0.1);
       g.add(socket, core, iris, pup, dot);
       this.body.add(g);
       this.eyeGroups.push(g);
