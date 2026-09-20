@@ -11,7 +11,7 @@ export const DEG = Math.PI / 180;
 export const APERTURE_HALF_DEG = 35;
 export const TAN_APERTURE = Math.tan(APERTURE_HALF_DEG * DEG);
 /** Pilot's eye height above the regolith. */
-export const EYE_Y = 11;
+export const EYE_Y = 13;
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;

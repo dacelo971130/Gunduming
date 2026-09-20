@@ -208,7 +208,7 @@ export function createBattleScene(container: HTMLElement, onFatal: (err: unknown
       const delay = at !== undefined ? clamp(at - time, 0, 1.5) : 0;
       pendingImpact.delete(targetId);
       if (view) view.wreckDelay = killed ? delay : 0;
-      const scale = enemy?.kind === "CRIMSON" ? 1.5 : 1;
+      const scale = (enemy?.kind === "CRIMSON" ? 1.5 : 1) * 1.4;
       const color = enemy?.kind === "CRIMSON" ? 0xff6a7a : 0xffd9a0;
       const captured = view ? view.chestWorld(new THREE.Vector3()) : null;
       schedule(delay, () => {
@@ -380,8 +380,8 @@ export function createBattleScene(container: HTMLElement, onFatal: (err: unknown
       }
       view.burning = (enemy.burningUntil ?? 0) > now && enemy.state !== "DESTROYED";
       view.update(enemy, s.player.bearing, dt, now, camPos);
-      if (view.isWreck) fx.wreckSmoke(view.chestWorld(_p), dt, view.u);
-      if (view.burning) fx.burn(view.chestWorld(_p), dt, view.u);
+      if (view.isWreck) fx.wreckSmoke(view.chestWorld(_p), dt, view.fxScale);
+      if (view.burning) fx.burn(view.chestWorld(_p), dt, view.fxScale);
     }
 
     // Fleet support: launch the streaks so they land at impactAt.

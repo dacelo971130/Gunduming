@@ -18,11 +18,12 @@ import { clamp, damp } from "./math";
 /** View depth of the canopy frame lip. */
 export const FRAME_DEPTH = 1.25;
 /** Pilot's-eye forearm placement (camera space). */
-const ARM_SCALE = 0.42;
-const ARM_X = 2.2;
-const ARM_Y = -3.3;
-const ARM_Z = -8.2;
-const ARM_TILT = -0.2;
+const ARM_SCALE = 0.62;
+const ARM_X = 2.6;
+const ARM_Y = -2.9;
+const ARM_Z = -6.4;
+/** Far end (hand + weapon) pitched down so the pilot looks onto the decorated top plates. */
+const ARM_TILT = -0.42;
 const RIGHT_HAND: WeaponId[] = ["RIFLE", "INCENDIARY", "BLADE"];
 const LEFT_HAND: WeaponId[] = ["MISSILE", "FLEET_CANNON"];
 
@@ -200,9 +201,9 @@ export class CockpitRig {
 
   private buildLights(): void {
     // Warm console glow from below, cool instrument spill from above.
-    const warm = new THREE.PointLight(0xffc9a0, 1.6, 5, 2);
+    const warm = new THREE.PointLight(0xffc9a0, 0.25, 5, 2);
     warm.position.set(0, -0.8, -0.9);
-    const cool = new THREE.PointLight(0x8fb4ff, 1.1, 5, 2);
+    const cool = new THREE.PointLight(0x8fb4ff, 0.15, 5, 2);
     cool.position.set(0.4, 0.8, -0.7);
     this.group.add(warm, cool);
   }
@@ -215,9 +216,9 @@ export class CockpitRig {
     this.armR.scale.setScalar(ARM_SCALE);
     this.armL.scale.setScalar(ARM_SCALE);
     this.armR.position.set(ARM_X, ARM_Y, ARM_Z);
-    this.armR.rotation.set(ARM_TILT, -0.1, 0);
+    this.armR.rotation.set(ARM_TILT, -0.16, 0.12);
     this.armL.position.set(-ARM_X, ARM_Y, ARM_Z);
-    this.armL.rotation.set(ARM_TILT, 0.1, 0);
+    this.armL.rotation.set(ARM_TILT, 0.16, -0.12);
     this.armR.add(buildHeroForearm(1, m));
     this.armL.add(buildHeroForearm(-1, m));
     this.arms.add(this.armR, this.armL);
@@ -424,12 +425,12 @@ export class CockpitRig {
     const leftHeld = LEFT_HAND.includes(this.current);
     const rR = this.recoilR * this.recoilR;
     this.armR.position.set(ARM_X + swayX, ARM_Y + swayY - drop * (rightHeld ? 1 : 0), ARM_Z + rR * 0.7);
-    this.armR.rotation.set(ARM_TILT + rR * 0.12, -0.1, 0);
+    this.armR.rotation.set(ARM_TILT + rR * 0.12, -0.16, 0.12);
     const rL = this.recoilL * this.recoilL;
     // The designator is held up toward the canopy; the pod/shield arm stays low.
     const raise = this.current === "FLEET_CANNON" ? swap * 0.55 : 0;
     this.armL.position.set(-ARM_X + swayX, ARM_Y + swayY - drop * (leftHeld ? 1 : 0) + raise * 1.6, ARM_Z + rL * 0.4 + raise * 1.2);
-    this.armL.rotation.set(ARM_TILT + rL * 0.06 - raise * 0.5, 0.1 + raise * 0.25, 0);
+    this.armL.rotation.set(ARM_TILT + rL * 0.06 - raise * 0.5, 0.16 + raise * 0.25, -0.12);
 
     const rn = this.recoilNuke * this.recoilNuke;
     const nuke = this.weapons.NUKE.children[0];

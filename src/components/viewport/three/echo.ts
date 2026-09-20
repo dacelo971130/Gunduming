@@ -18,7 +18,7 @@ import { clamp, damp } from "./math";
 export const ECHO_DEPTH = 1.05;
 /** Screen position: ~4 o'clock, 70% of the aperture radius out. */
 const ECHO_ANGLE_DEG = -34;
-const ECHO_RADIUS_FRAC = 0.7;
+const ECHO_RADIUS_FRAC = 0.66;
 
 const _camWorld = new THREE.Vector3();
 
@@ -63,7 +63,7 @@ export class Echo01 {
   targetBearing: number | null = null;
 
   constructor(private readonly rig: CameraRig) {
-    const r = 0.077 * ECHO_DEPTH * 1.15;
+    const r = 0.077 * ECHO_DEPTH * 1.15 * 1.2;
     this.r = r;
     const shell = new THREE.MeshPhysicalMaterial({
       color: 0x38a84a, roughness: 0.24, metalness: 0.02, clearcoat: 1, clearcoatRoughness: 0.1,
@@ -74,8 +74,11 @@ export class Echo01 {
     const fabric = new THREE.MeshStandardMaterial({ color: 0x3a3330, roughness: 1, metalness: 0 });
     const seam = new THREE.MeshStandardMaterial({ color: 0x6a5f58, roughness: 1, metalness: 0 });
     const cable = new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.9, metalness: 0.1 });
-    this.eyeCoreMat = new THREE.MeshStandardMaterial({ color: 0xfff8e8, emissive: 0xfff6dc, emissiveIntensity: 1.5, roughness: 0.25 });
-    this.irisMat = new THREE.MeshStandardMaterial({ color: 0x1c3a2a, emissive: 0x7fe0a8, emissiveIntensity: 0.8, roughness: 0.3 });
+    // Eye whites glow only faintly (kept under the bloom threshold); the dark ring + pupil carry the read.
+    this.eyeCoreMat = new THREE.MeshStandardMaterial({ color: 0xf4f1e6, emissive: 0xfff2d0, emissiveIntensity: 0.35, roughness: 0.3 });
+    this.irisMat = new THREE.MeshStandardMaterial({ color: 0x0b1a10, emissive: 0x1f7a3f, emissiveIntensity: 0.25, roughness: 0.35 });
+    const pupil = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.4 });
+    this.disposables.push(pupil);
     this.mouthMat = new THREE.MeshStandardMaterial({ color: 0x0a0505, emissive: 0xff6a5a, emissiveIntensity: 0.12, roughness: 0.4 });
     const highlight = new THREE.MeshBasicMaterial({ color: 0xffffff });
     this.disposables.push(shell, darkGreen, grey, fabric, seam, cable, this.eyeCoreMat, this.irisMat, this.mouthMat, highlight);
@@ -98,9 +101,11 @@ export class Echo01 {
     socketGeo.rotateX(Math.PI / 2);
     const coreGeo = new THREE.SphereGeometry(eyeR, 48, 32);
     coreGeo.scale(1, 1, 0.55);
-    const irisGeo = new THREE.TorusGeometry(eyeR * 0.62, eyeR * 0.07, 12, 48);
-    const dotGeo = new THREE.SphereGeometry(eyeR * 0.16, 16, 12);
-    this.disposables.push(socketGeo, coreGeo, irisGeo, dotGeo);
+    const irisGeo = new THREE.TorusGeometry(eyeR * 0.6, eyeR * 0.11, 12, 48); // dark iris ring
+    const pupilGeo = new THREE.SphereGeometry(eyeR * 0.36, 24, 16);
+    pupilGeo.scale(1, 1, 0.5);
+    const dotGeo = new THREE.SphereGeometry(eyeR * 0.14, 16, 12);
+    this.disposables.push(socketGeo, coreGeo, irisGeo, pupilGeo, dotGeo);
     for (const s of [-1, 1]) {
       const g = new THREE.Group();
       const dir = new THREE.Vector3(s * 0.42, 0.2, 0.86).normalize();
@@ -111,9 +116,11 @@ export class Echo01 {
       core.position.z = r * 0.05;
       const iris = new THREE.Mesh(irisGeo, this.irisMat);
       iris.position.z = r * 0.1;
+      const pup = new THREE.Mesh(pupilGeo, pupil);
+      pup.position.z = r * 0.11;
       const dot = new THREE.Mesh(dotGeo, highlight);
-      dot.position.set(-eyeR * 0.35, eyeR * 0.35, r * 0.14);
-      g.add(socket, core, iris, dot);
+      dot.position.set(-eyeR * 0.3, eyeR * 0.3, r * 0.15);
+      g.add(socket, core, iris, pup, dot);
       this.body.add(g);
       this.eyeGroups.push(g);
     }
@@ -127,11 +134,11 @@ export class Echo01 {
     this.disposables.push(mouthGeo);
 
     /* ---- rounded ear flaps with visible hinges ---- */
-    const earGeo = new RoundedBoxGeometry(r * 0.66, r * 0.07, r * 0.52, 3, r * 0.03);
-    earGeo.translate(r * 0.36, 0, 0); // hinge at the inner edge
-    const earInner = new RoundedBoxGeometry(r * 0.5, r * 0.025, r * 0.38, 2, r * 0.012);
-    earInner.translate(r * 0.36, -r * 0.045, 0);
-    const hingeGeo = new THREE.CylinderGeometry(r * 0.045, r * 0.045, r * 0.6, 24);
+    const earGeo = new RoundedBoxGeometry(r * 0.78, r * 0.14, r * 0.62, 3, r * 0.06);
+    earGeo.translate(r * 0.42, 0, 0); // hinge at the inner edge
+    const earInner = new RoundedBoxGeometry(r * 0.58, r * 0.03, r * 0.44, 2, r * 0.012);
+    earInner.translate(r * 0.42, -r * 0.08, 0);
+    const hingeGeo = new THREE.CylinderGeometry(r * 0.07, r * 0.07, r * 0.72, 24);
     hingeGeo.rotateX(Math.PI / 2);
     this.disposables.push(earGeo, earInner, hingeGeo);
     for (const s of [-1, 1]) {
@@ -139,7 +146,7 @@ export class Echo01 {
       const flap = new THREE.Mesh(earGeo, shell);
       flap.add(new THREE.Mesh(earInner, darkGreen));
       g.add(flap, new THREE.Mesh(hingeGeo, grey));
-      g.position.set(s * r * 0.3, r * 0.9, 0);
+      g.position.set(s * r * 0.28, r * 0.93, 0);
       g.scale.x = s;
       this.body.add(g);
     }
@@ -188,12 +195,9 @@ export class Echo01 {
     cb.cyl(r * 0.05, r * 0.05, r * 0.12, 16, 0.2 * r, -r * 0.7, -r * 0.6, "grey", [Math.PI / 2, 0, 0]); // plug
     this.group.add(cb.build({ fabric, seam, grey, cable }, false));
 
-    /* ---- warm-green rim light so it pops against the dark cockpit ---- */
-    const rim = new THREE.PointLight(0xd2ffd8, 0.35, 0.9, 2);
-    rim.position.set(-r * 2.2, r * 3.0, r * 1.6);
-    this.group.add(rim);
-    const key = new THREE.PointLight(0xfff0dc, 0.22, 0.8, 2);
-    key.position.set(r * 1.8, r * 1.4, r * 3.2);
+    /* ---- one small white key light (candela scale — tiny values at this distance) ---- */
+    const key = new THREE.PointLight(0xfff4e6, 0.012, 1.2, 2);
+    key.position.set(r * 1.6, r * 2.4, r * 3.4);
     this.group.add(key);
 
     this.group.add(this.body);
@@ -279,19 +283,19 @@ export class Echo01 {
     if (status === "THINKING") earTarget = 0.5 + Math.sin(t * 14) * 0.45;
     if (status === "SPEAKING") earTarget = 0.35 + Math.abs(Math.sin(t * 9)) * 0.6;
     if (happy) earTarget = Math.max(earTarget, 0.95);
-    if (boss) earTarget = -0.2;
+    if (boss) earTarget = -0.3;
     this.earOpen = damp(this.earOpen, earTarget, status === "THINKING" || status === "SPEAKING" ? 30 : 8, dt);
-    // closed = lying along the shell with a slight droop (-0.12); open = ~70° up.
-    const earAngle = -0.12 + this.earOpen * 1.35;
+    // at rest the flaps sit ~25° up off the shell (they read as flaps, not antennae); open = ~70° more.
+    const earAngle = 0.45 + this.earOpen * 1.2;
     this.earL.rotation.z = earAngle;
     this.earR.rotation.z = -earAngle;
 
     /* ---- eyes ---- */
-    let level = 1.5;
-    if (status === "LISTENING") level = 2.6;
-    if (status === "THINKING") level = 1.8;
-    if (status === "SPEAKING") level = 2.1 + Math.sin(t * 11) * 0.6;
-    if (status === "OFFLINE") level = 0.15;
+    let level = 0.35;
+    if (status === "LISTENING") level = 0.7;
+    if (status === "THINKING") level = 0.45;
+    if (status === "SPEAKING") level = 0.55 + Math.sin(t * 11) * 0.15;
+    if (status === "OFFLINE") level = 0.05;
     this.eyeLevel = damp(this.eyeLevel, level, 8, dt);
     if (t > this.nextBlink) {
       this.blinkT = 0;
@@ -318,7 +322,7 @@ export class Echo01 {
     }
 
     /* ---- mouth ---- */
-    this.mouthMat.emissiveIntensity = status === "SPEAKING" ? 1.2 + Math.max(0, Math.sin(t * 18)) * 1.8 : 0.12;
+    this.mouthMat.emissiveIntensity = status === "SPEAKING" ? 0.5 + Math.max(0, Math.sin(t * 18)) * 0.6 : 0.08;
 
     /* ---- arms + legs pop out when excited ---- */
     const pop = clamp(this.excite * 1.5, 0, 1);

@@ -90,7 +90,7 @@ export function WakeFlash({ onAdvance, reducedMotion }: WakeFlashProps) {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.22, delay: reducedMotion ? 0.1 : 0.24, ease: [0.2, 1, 0.2, 1] }}
       >
-        ECHO
+        GUNDAM
       </motion.div>
     </div>
   );

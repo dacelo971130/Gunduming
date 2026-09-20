@@ -48,6 +48,8 @@ function levenshtein(a: string, b: string): number {
  * change for this file to accept more variants.
  */
 const EXTENDED_WAKE_WORDS = [
+  "gundam", "gun dam", "gundum", "gandam", "gondam", "gun them", "gun dumb", "gun damn",
+  "gundams", "gum dam", "kundam", "gun done", "gun down", "hey gundam", "ok gundam", "okay gundam",
   "echo", "eco", "ekko", "eko", "echoe", "echoes", "hello", "ago",
   "echo one", "echo 01", "acho", "eccho", "ok echo", "okay echo", "hey echo",
 ];

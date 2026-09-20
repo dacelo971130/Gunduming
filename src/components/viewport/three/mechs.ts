@@ -371,17 +371,26 @@ export function buildHeroForearm(side: number, mats: MatSet, u = 1): THREE.Group
   const g = group("forearm");
   const b = new PartBuilder();
   const len = 4.6 * u;
-  b.cyl(0.62 * u, 0.62 * u, 1.9 * u, 12, 0, 0, 0, "frame", [0, 0, Math.PI / 2]); // elbow joint
+  // elbow: exposed joint cylinder with a ring collar
+  b.cyl(0.72 * u, 0.72 * u, 2.2 * u, 32, 0, 0, 0, "frame", [0, 0, Math.PI / 2]);
+  b.torus(0.78 * u, 0.09 * u, 12, 48, 0.9 * u, 0, 0, "steel", [0, Math.PI / 2, 0]);
+  b.torus(0.78 * u, 0.09 * u, 12, 48, -0.9 * u, 0, 0, "steel", [0, Math.PI / 2, 0]);
   b.box(1.5 * u, 1.5 * u, 2.2 * u, 0, -0.5 * u, 1.3 * u, "white", [0.5, 0, 0]); // upper-arm stub behind the elbow
+  // forearm armour: tapered bevelled shell + raised top plate
   b.wedge(1.9 * u, len, 1.9 * u, 0.86, 0, 0, -len / 2, "white", [Math.PI / 2, 0, 0]);
-  b.box(2.0 * u, 0.5 * u, len * 0.6, 0, 0.85 * u, -len * 0.45, "white"); // top plate
-  b.sharp(2.05 * u, 0.08 * u, 0.12 * u, 0, 1.12 * u, -len * 0.3, "dark"); // panel lines
-  b.sharp(2.05 * u, 0.08 * u, 0.12 * u, 0, 1.12 * u, -len * 0.62, "dark");
-  b.sharp(0.1 * u, 0.08 * u, len * 0.55, 0.6 * u, 1.12 * u, -len * 0.45, "dark");
-  b.sharp(0.1 * u, 0.08 * u, len * 0.55, -0.6 * u, 1.12 * u, -len * 0.45, "dark");
-  b.box(0.5 * u, 0.12 * u, len * 0.3, 0, 1.12 * u, -len * 0.45, "red"); // red stripe
+  b.box(2.0 * u, 0.5 * u, len * 0.6, 0, 0.85 * u, -len * 0.45, "white");
+  b.sharp(2.05 * u, 0.1 * u, 0.16 * u, 0, 1.12 * u, -len * 0.3, "dark"); // panel lines
+  b.sharp(2.05 * u, 0.1 * u, 0.16 * u, 0, 1.12 * u, -len * 0.62, "dark");
+  b.sharp(0.14 * u, 0.1 * u, len * 0.55, 0.62 * u, 1.12 * u, -len * 0.45, "dark");
+  b.sharp(0.14 * u, 0.1 * u, len * 0.55, -0.62 * u, 1.12 * u, -len * 0.45, "dark");
+  b.box(0.55 * u, 0.14 * u, len * 0.32, 0, 1.14 * u, -len * 0.46, "red"); // red stripe
+  b.box(0.42 * u, 0.12 * u, 0.42 * u, 0, 1.14 * u, -len * 0.16, "yellow"); // yellow sensor block
   b.box(0.7 * u, 0.6 * u, 0.9 * u, -0.7 * u, 0.5 * u, -len * 0.15, "frame"); // wrist actuator housing
-  b.box(1.95 * u, 0.6 * u, 0.4 * u, 0, 0.3 * u, -len * 0.78, "blue"); // wrist band
+  b.cyl(0.22 * u, 0.22 * u, len * 0.5, 16, 0.9 * u, 0.2 * u, -len * 0.4, "steel", [Math.PI / 2, 0, 0]); // hydraulic rod
+  // blue wrist band + side vents
+  b.box(2.0 * u, 1.6 * u, 0.5 * u, 0, 0.1 * u, -len * 0.82, "blue");
+  b.sharp(0.12 * u, 0.5 * u, 0.3 * u, 1.02 * u, 0.3 * u, -len * 0.55, "dark");
+  b.sharp(0.12 * u, 0.5 * u, 0.3 * u, -1.02 * u, 0.3 * u, -len * 0.55, "dark");
   // hand: palm block, four articulated fingers curled around the grip, thumb
   b.box(1.4 * u, 1.3 * u, 1.1 * u, 0, -0.1 * u, -len - 0.45 * u, "frame"); // palm
   b.box(1.5 * u, 0.45 * u, 1.2 * u, 0, 0.7 * u, -len - 0.45 * u, "white"); // hand guard
@@ -392,14 +401,18 @@ export function buildHeroForearm(side: number, mats: MatSet, u = 1): THREE.Group
     b.box(0.32 * u, 0.12 * u, 0.5 * u, fx, 0.15 * u, -len - 1.2 * u, "white", [0.35, 0, 0]); // knuckle plate
   }
   b.box(0.32 * u, 0.32 * u, 0.7 * u, side * 0.85 * u, -0.4 * u, -len - 0.7 * u, "frame", [0.4, 0, side * 0.9]); // thumb
-  b.rivets(-0.7 * u, 1.0 * u, -len * 0.2, 0.7 * u, 1.0 * u, -len * 0.2, 3, 0.09 * u, "steel");
   if (side < 0) {
-    // slab shield hanging off the outer face of the left forearm
-    const sx = -1.6 * u;
-    b.box(0.5 * u, 6.4 * u, 4.6 * u, sx, 0.4 * u, -len * 0.55, "white", [0, 0, 0.05]);
-    b.box(0.25 * u, 3.0 * u, 3.6 * u, sx - 0.25 * u, 0.8 * u, -len * 0.55, "blue");
-    b.box(0.25 * u, 0.9 * u, 3.4 * u, sx - 0.25 * u, -1.6 * u, -len * 0.55, "red");
-    b.box(0.25 * u, 1.4 * u, 1.3 * u, sx - 0.25 * u, 2.6 * u, -len * 0.55, "yellow");
+    // slab shield on the outer face of the left forearm, leaning outward so its trim is seen from the cockpit
+    const sx = -1.7 * u;
+    const lean = 0.42;
+    b.box(0.5 * u, 6.4 * u, 4.6 * u, sx, 0.6 * u, -len * 0.55, "white", [0, 0, lean]);
+    b.box(0.6 * u, 6.5 * u, 0.4 * u, sx, 0.6 * u, -len * 0.55 + 2.3 * u, "frame", [0, 0, lean]); // leading edge
+    for (const face of [-0.28, 0.28]) {
+      b.box(0.14 * u, 3.0 * u, 3.6 * u, sx + face * u, 1.0 * u, -len * 0.55, "blue", [0, 0, lean]);
+      b.box(0.14 * u, 0.9 * u, 3.4 * u, sx + face * u, -1.6 * u, -len * 0.55, "red", [0, 0, lean]);
+      b.box(0.14 * u, 1.4 * u, 1.3 * u, sx + face * u, 2.8 * u, -len * 0.55, "yellow", [0, 0, lean]);
+    }
+    b.cyl(0.32 * u, 0.32 * u, 1.2 * u, 24, sx * 0.6, 0.4 * u, -len * 0.55, "frame", [0, 0, Math.PI / 2]); // mount
   }
   g.add(b.build(mats));
   return g;
@@ -410,9 +423,9 @@ export function buildBeamRifle(mats: MatSet, u = 1): THREE.Group {
   const rb = new PartBuilder();
   rb.box(0.9 * u, 1.3 * u, 5.6 * u, 0, 0.1 * u, -3.4 * u, "white");
   rb.box(0.6 * u, 0.6 * u, 2.0 * u, 0, 0.1 * u, -0.2 * u, "frame");
-  rb.cyl(0.3 * u, 0.36 * u, 3.2 * u, 8, 0, 0.3 * u, -7.4 * u, "frame", [Math.PI / 2, 0, 0]);
-  rb.cyl(0.55 * u, 0.55 * u, 0.5 * u, 8, 0, 0.3 * u, -9.0 * u, "dark", [Math.PI / 2, 0, 0]);
-  rb.box(0.5 * u, 0.8 * u, 1.6 * u, 0, 1.0 * u, -4.6 * u, "dark"); // scope
+  rb.cyl(0.3 * u, 0.36 * u, 3.2 * u, 24, 0, 0.3 * u, -7.4 * u, "frame", [Math.PI / 2, 0, 0]);
+  rb.cyl(0.55 * u, 0.55 * u, 0.5 * u, 24, 0, 0.3 * u, -9.0 * u, "dark", [Math.PI / 2, 0, 0]); // muzzle brake
+  rb.box(0.5 * u, 0.8 * u, 1.6 * u, 0, 1.0 * u, -4.6 * u, "dark"); // scope mount
   rb.box(0.6 * u, 0.6 * u, 0.6 * u, 0, 0.9 * u, -2.0 * u, "yellow"); // sensor
   rb.box(0.3 * u, 0.5 * u, 2.4 * u, 0, -0.9 * u, -3.0 * u, "blue"); // under-barrel rail
   rb.box(0.5 * u, 1.1 * u, 0.6 * u, 0, -0.9 * u, -1.4 * u, "frame"); // magazine

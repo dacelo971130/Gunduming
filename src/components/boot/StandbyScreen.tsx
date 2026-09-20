@@ -55,7 +55,7 @@ export function StandbyScreen({ onAdvance, reducedMotion }: StandbyScreenProps) 
           STANDBY
         </div>
         <div className="hud-label text-center text-[10px] text-hud-dim">
-          SAY &quot;ECHO&quot; TO INITIALIZE
+          SAY &quot;GUNDAM&quot; TO INITIALIZE
         </div>
       </motion.div>
 

@@ -8,7 +8,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AETHER FRAME // TACTICAL COCKPIT",
+  title: "GUNDAM // TACTICAL COCKPIT",
   description: "A voice-controlled AI co-pilot that turns a browser into a living mecha cockpit.",
 };
 

@@ -13,6 +13,8 @@ import type { Aperture } from "@/components/cockpit/layout";
 import { DEG, EYE_Y, TAN_APERTURE, clamp } from "./math";
 
 export const CAMERA_NEAR = 0.08;
+/** Slight nose-down pitch: horizon sits a little above the aperture centre so the enemies' feet clear the dash. */
+const PITCH_DOWN = 0.055;
 export const CAMERA_FAR = 6000;
 
 export class CameraRig {
@@ -126,7 +128,7 @@ export class CameraRig {
 
     const cam = this.camera;
     cam.position.set(jx, EYE_Y + bobY + jy - this.dip * 0.35, 0);
-    cam.rotation.set(swayX + jr * 0.6 - this.dip * 0.03, this.headingRad, swayZ + this.roll + this.turnBank + jr);
+    cam.rotation.set(swayX + jr * 0.6 - this.dip * 0.03 - PITCH_DOWN, this.headingRad, swayZ + this.roll + this.turnBank + jr);
   }
 
   /** Project a world point to CSS px. Returns false if behind the camera. */

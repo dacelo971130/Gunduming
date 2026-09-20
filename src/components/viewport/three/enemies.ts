@@ -10,6 +10,8 @@ import { buildAce, buildGrunt, type MechRig } from "./mechs";
 import { cloneWithMaterials, disposeTree } from "./parts";
 import { DEG, clamp, damp, easeOutCubic, polarToWorld, terrainHeight } from "./math";
 
+/** Visual scale on top of the rig's metre sizes — sells the mass of an 18–25 m machine at compressed range. */
+export const ENEMY_SCALE = 1.8;
 /** Enemies hold a fixed bearing and pause this long before a shot lands (mirrors enemyAI cooldowns). */
 const WINDUP_AFTER_MS = 1900;
 const ACE_DESCENT_S = 1.7;
@@ -129,6 +131,7 @@ export class EnemyView {
     this.height = rig.height;
     this.u = rig.height / 20;
     this.root = cloneWithMaterials(rig.root);
+    this.root.scale.setScalar(ENEMY_SCALE);
     this.n = findNodes(this.root);
     this.root.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -296,7 +299,7 @@ export class EnemyView {
         this.wreckT = 1;
         this.root.rotation.x = -0.35;
         this.root.rotation.z = this.wreckAxis * 1.4;
-        this.root.position.y = ground - 1.2 * u;
+        this.root.position.y = ground - 1.2 * u * ENEMY_SCALE;
       }
       if (!this.darkened) this.darkenNow();
       return;
@@ -315,7 +318,7 @@ export class EnemyView {
         const t = this.wreckT * this.wreckT;
         this.root.rotation.z = this.wreckAxis * t * 1.35;
         this.root.rotation.x = -t * 0.35;
-        this.root.position.y = this.pos.y - t * 1.2 * u;
+        this.root.position.y = this.pos.y - t * 1.2 * u * ENEMY_SCALE;
         if (!this.darkened) this.darkenNow();
       }
     }
@@ -357,10 +360,14 @@ export class EnemyView {
 
   /* ---- anchors for FX / overlay (world space) ---- */
   chestWorld(out: THREE.Vector3): THREE.Vector3 {
-    return this.n.torso.getWorldPosition(out).add(_v.set(0, 3.2 * this.u, 0));
+    return this.n.torso.getWorldPosition(out).add(_v.set(0, 3.2 * this.u * ENEMY_SCALE, 0));
   }
   headTopWorld(out: THREE.Vector3): THREE.Vector3 {
-    return this.n.head.getWorldPosition(out).add(_v.set(0, 3.8 * this.u, 0));
+    return this.n.head.getWorldPosition(out).add(_v.set(0, 3.8 * this.u * ENEMY_SCALE, 0));
+  }
+  /** Scale factor for FX sized to the unit (metres × visual scale). */
+  get fxScale(): number {
+    return this.u * ENEMY_SCALE;
   }
   feetWorld(out: THREE.Vector3): THREE.Vector3 {
     return out.copy(this.pos);
@@ -370,7 +377,7 @@ export class EnemyView {
   }
   /** Half-width in metres for lock brackets. */
   get halfWidth(): number {
-    return 6.4 * this.u;
+    return 6.4 * this.u * ENEMY_SCALE;
   }
 
   dispose(): void {

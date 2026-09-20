@@ -228,7 +228,7 @@ export function LetterExpansion({ onAdvance, reducedMotion }: LetterExpansionPro
               {PLAYER_MECH}
             </div>
             <div className="hud-label text-hud-dim" style={{ letterSpacing: "0.3em" }}>
-              ALL SUBSYSTEMS COMPILED
+              G.U.N.D.A.M. SYSTEM · ALL SUBSYSTEMS COMPILED
             </div>
             <div
               className="hud-label text-hud-dim opacity-60"

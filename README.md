@@ -8,7 +8,7 @@ You do not open a website. You say a word into a dark room, and a war machine wa
 VOICE LINK
 STANDBY
 
-SAY "ECHO" TO INITIALIZE
+SAY "GUNDAM" TO INITIALIZE
 ```
 
 ## Run it
@@ -30,7 +30,7 @@ hand-written fallback script. Nothing on stage depends on a request succeeding.
 
 | | |
 |---|---|
-| Pilot's machine | **AETHER FRAME** — white/blue/red hero mech, seen full-body in the opening reveal |
+| Pilot's machine | **GUNDAM** (project AETHER FRAME) — white/blue/red hero mech, seen full-body in the opening reveal. Wake word: "GUNDAM" (or "ECHO") |
 | AI co-pilot | **ECHO-01** — a round green companion robot with flap ears, sitting lower-right in the cockpit |
 | Hostiles | **MANTIS-01**, green monoeye mass-production units of the **VOID FLEET** |
 | Ace | **CRIMSON-01**, *THE RED ACE* — analyses how you fight and stops falling for it |
@@ -114,8 +114,8 @@ Every command has a key, because microphones fail in front of an audience.
 
 ## Demo flow — about five minutes
 
-1. **Black screen.** "ECHO." → `VOICE COMMAND DETECTED`
-2. **Boot.** A · E · T · H · E · R each expand into a subsystem, reactor ignition, then a full-body reveal of the AETHER FRAME in the hangar (Space skips), then the load list and `ALL SYSTEMS OPERATIONAL`
+1. **Black screen.** "GUNDAM." → `VOICE COMMAND DETECTED`
+2. **Boot.** G · U · N · D · A · M each expand into a subsystem (General Unilateral Neuro-link Dispersive Autonomic Maneuver), reactor ignition, then a full-body reveal of the AETHER FRAME in the hangar (Space skips), then the load list and `ALL SYSTEMS OPERATIONAL`
 3. **Cockpit.** Panels power on one at a time — radar, systems, mission, weapons, comms, AI core, pilot
 4. **Briefing.** ECHO-01 greets the pilot and reports live Taipei weather, the mission and system status
 5. **Contact.** `HOSTILES DETECTED` — MANTIS waves, fought by voice
