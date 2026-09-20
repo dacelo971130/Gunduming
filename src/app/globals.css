@@ -1,26 +1,174 @@
 @import "tailwindcss";
 
+/* ================= AETHER FRAME — cockpit design tokens =================
+   Military mecha + retro-futuristic terminal. Black base, green = system /
+   friendly, amber = caution, red = hostile. Never neon-cyberpunk.        */
+
+@theme {
+  --color-hud-void: #04070a;
+  --color-hud-deep: #080d12;
+  --color-hud-panel: #0b1219;
+  --color-hud-line: #16303a;
+  --color-hud-grid: #0f2129;
+
+  --color-hud-green: #4ef5a7;
+  --color-hud-green-dim: #1d7a55;
+  --color-hud-green-glow: #8affd0;
+
+  --color-hud-white: #e8f4f2;
+  --color-hud-gray: #6d8a8a;
+  --color-hud-dim: #3b5555;
+
+  --color-hud-amber: #ffb43d;
+  --color-hud-red: #ff3b4e;
+  --color-hud-red-deep: #8f0f1e;
+  --color-hud-crimson: #ff1f3d;
+
+  --font-mono: var(--font-geist-mono), "SFMono-Regular", ui-monospace, monospace;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #04070a;
+  --foreground: #e8f4f2;
+  --scan-opacity: 0.35;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
+  height: 100%;
+  background: #04070a;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ------------------------------------------------------------ primitives */
+
+/* CRT scanlines — overlay the whole app. */
+.crt-scan::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, var(--scan-opacity)) 3px,
+    rgba(0, 0, 0, 0) 4px
+  );
+  z-index: 60;
+  mix-blend-mode: multiply;
+}
+
+/* Subtle vignette + screen curvature feel. */
+.crt-vignette::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.75) 100%);
+  z-index: 55;
+}
+
+.hud-panel {
+  position: relative;
+  background: linear-gradient(180deg, rgba(11, 18, 25, 0.92), rgba(4, 7, 10, 0.92));
+  border: 1px solid var(--color-hud-line);
+  box-shadow: inset 0 0 24px rgba(78, 245, 167, 0.04), 0 0 12px rgba(0, 0, 0, 0.6);
+}
+
+/* Corner brackets on panels — the classic targeting frame. */
+.hud-bracket::before,
+.hud-bracket::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--color-hud-green);
+  border-style: solid;
+  opacity: 0.75;
+}
+.hud-bracket::before {
+  top: -1px; left: -1px;
+  border-width: 1px 0 0 1px;
+}
+.hud-bracket::after {
+  bottom: -1px; right: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+.hud-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-hud-gray);
+}
+
+.text-glow {
+  text-shadow: 0 0 8px currentColor, 0 0 22px color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.dot-leader {
+  flex: 1;
+  border-bottom: 1px dotted var(--color-hud-dim);
+  margin: 0 6px 4px;
+}
+
+/* ------------------------------------------------------------ animations */
+
+@keyframes hud-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  94% { opacity: 0.65; }
+  96% { opacity: 1; }
+  97% { opacity: 0.8; }
+}
+.animate-flicker { animation: hud-flicker 6s infinite steps(1, end); }
+
+@keyframes hud-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-sweep { animation: hud-sweep 3.2s linear infinite; transform-origin: center; }
+
+@keyframes hud-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+.animate-breathe { animation: hud-breathe 2.8s ease-in-out infinite; }
+
+@keyframes hud-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.15; }
+}
+.animate-blink { animation: hud-blink 1s steps(1, end) infinite; }
+
+@keyframes glitch-shift {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  60% { transform: translate(-1px, -1px); }
+  80% { transform: translate(1px, 1px); }
+}
+.animate-glitch { animation: glitch-shift 0.18s steps(2, end) infinite; }
+
+@keyframes screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-4px, 2px); }
+  50% { transform: translate(3px, -3px); }
+  75% { transform: translate(-2px, -1px); }
+}
+.animate-shake { animation: screen-shake 0.32s ease-out 1; }
+
+/* Hostile alert wash. */
+@keyframes red-alert {
+  0%, 100% { box-shadow: inset 0 0 0 rgba(255, 59, 78, 0); }
+  50% { box-shadow: inset 0 0 140px rgba(255, 59, 78, 0.28); }
+}
+.animate-red-alert { animation: red-alert 1.4s ease-in-out infinite; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-hud-green-dim); }
