@@ -8,9 +8,15 @@
  *
  * Weapons: `q` cycles to the next weapon, `w` to the previous one (WEAPONS
  * order in config.ts). Digits stay rehearsal keys.
+ *
+ * Aiming: hold ArrowLeft / ArrowRight to turn the mech at TURN_RATE_DEG_PER_S.
+ * Key repeat is unreliable, so keydown/keyup are tracked and a 50 ms interval
+ * calls `turnPlayer` directly — the TURN *command* (log, telemetry, speech) is
+ * reserved for discrete voice/typed turns.
  */
 import type { GameCommand } from "@/game/types";
 import { game } from "@/game/store";
+import { turnPlayer } from "@/game/commands";
 import type { Phase } from "@/game/types";
 
 export interface KeyboardHandlerOptions {
@@ -33,8 +39,49 @@ const COCKPIT_PHASES = new Set<Phase>([
 ]);
 const ALWAYS_LIVE = new Set(["n", "/", "0", "1", "2", "3", "4", "5", "6", "7"]);
 
+const TURN_RATE_DEG_PER_S = 55;
+const TURN_TICK_MS = 50;
+
 /** Mounts a single global keydown listener. Returns a cleanup function. */
 export function attachKeyboardFallback(opts: KeyboardHandlerOptions): () => void {
+  const heldTurn = new Set<"LEFT" | "RIGHT">();
+  let turnTimer: ReturnType<typeof setInterval> | null = null;
+  let lastTurnAt = 0;
+
+  function stopTurning(): void {
+    heldTurn.clear();
+    if (turnTimer !== null) {
+      clearInterval(turnTimer);
+      turnTimer = null;
+    }
+  }
+
+  function turnTick(): void {
+    const now = performance.now();
+    const dt = Math.min(0.2, Math.max(0, (now - lastTurnAt) / 1000));
+    lastTurnAt = now;
+    if (heldTurn.size === 0 || !COCKPIT_PHASES.has(game.get().phase)) {
+      stopTurning();
+      return;
+    }
+    const dir = (heldTurn.has("RIGHT") ? 1 : 0) - (heldTurn.has("LEFT") ? 1 : 0);
+    if (dir !== 0 && dt > 0) {
+      try {
+        turnPlayer(dir * TURN_RATE_DEG_PER_S * dt);
+      } catch (err) {
+        console.error("[keyboard] turn tick threw", err);
+      }
+    }
+  }
+
+  function startTurning(direction: "LEFT" | "RIGHT"): void {
+    heldTurn.add(direction);
+    if (turnTimer === null) {
+      lastTurnAt = performance.now();
+      turnTimer = setInterval(turnTick, TURN_TICK_MS);
+    }
+  }
+
   function handler(e: KeyboardEvent): void {
     if (isTypingTarget(e.target)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -47,6 +94,14 @@ export function attachKeyboardFallback(opts: KeyboardHandlerOptions): () => void
     if (!COCKPIT_PHASES.has(game.get().phase) && !ALWAYS_LIVE.has(key)) return;
 
     switch (key) {
+      case "ArrowLeft":
+        e.preventDefault();
+        startTurning("LEFT");
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        startTurning("RIGHT");
+        break;
       case "l":
         opts.onCommand({ action: "LOCK_TARGET", target: { type: "NEAREST" } });
         break;
@@ -109,6 +164,30 @@ export function attachKeyboardFallback(opts: KeyboardHandlerOptions): () => void
     }
   }
 
+  function onKeyUp(e: KeyboardEvent): void {
+    if (e.key === "ArrowLeft") heldTurn.delete("LEFT");
+    else if (e.key === "ArrowRight") heldTurn.delete("RIGHT");
+    else return;
+    if (heldTurn.size === 0) stopTurning();
+  }
+
+  // Losing focus or the tab can swallow the keyup — never leave the mech spinning.
+  function onBlur(): void {
+    stopTurning();
+  }
+  function onVisibility(): void {
+    if (document.visibilityState !== "visible") stopTurning();
+  }
+
   window.addEventListener("keydown", handler);
-  return () => window.removeEventListener("keydown", handler);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("blur", onBlur);
+  document.addEventListener("visibilitychange", onVisibility);
+  return () => {
+    stopTurning();
+    window.removeEventListener("keydown", handler);
+    window.removeEventListener("keyup", onKeyUp);
+    window.removeEventListener("blur", onBlur);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
 }

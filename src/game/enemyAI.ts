@@ -27,14 +27,14 @@ const AGGRESSOR_START_DISTANCE = 380; // first standoff a pusher settles at
 const AGGRESSOR_MIN_DISTANCE = 210; // how close repeated pushes will eventually drive it
 const AGGRESSOR_PUSH_STEP = 55; // closes this much further on each renewed push
 const FLANKER_DISTANCE = 480;
-// The canopy shows ±35°; the pilot can't turn. A flanker "goes wide" to the
-// edge of the glass, not behind the pilot where it would exist only on radar.
-const FLANKER_BEARING_MIN = 26;
-const FLANKER_BEARING_MAX = 33;
-/** Hard cap on any committed/holding bearing so the unit stays on the canopy. */
-const CANOPY_BEARING_MAX = 33;
-/** Jinks may briefly leave the cone (edge arrow shows where it went), but not by much. */
-const BREAK_BEARING_MAX = 40;
+// The pilot can turn (ArrowLeft/Right, "turn left", lock auto-faces), so a flanker
+// genuinely goes wide — off the glass — and the pilot has to swing to find it.
+const FLANKER_BEARING_MIN = 45;
+const FLANKER_BEARING_MAX = 70;
+/** Cap on any freshly committed bearing goal (relative to the nose at commit time). */
+const CANOPY_BEARING_MAX = 70;
+/** Jinks may leave the cone by a fair margin; the edge arrows show where it went. */
+const BREAK_BEARING_MAX = 80;
 const FLANKER_SETTLE_DEG = 10; // within this many degrees of its wide bearing, it's "arrived"
 const SUPPRESSOR_DISTANCE = 820; // stays outside CLOSE range, fires steadily
 
@@ -62,6 +62,8 @@ const BREAK_DISTANCE_PAD = 90; // back off this much while jinking
 const CONVERGE_BEARING_GAP = 22; // degrees apart considered "bunched"
 const CONVERGE_CALLOUT_COOLDOWN_MS = 15000;
 const DANGER_ALERT_COOLDOWN_MS = 6000;
+/** Incendiary damage-over-time is applied in chunks this long so fx:hit does not fire every frame. */
+const BURN_CHUNK_S = 0.5;
 
 /** Local bookkeeping keyed by enemy id — not part of the frozen Enemy shape. */
 const destroyedAt = new Map<string, number>();
@@ -78,6 +80,8 @@ const windupUntil = new Map<string, number>(); // telegraph hold before a shot l
 const wasTargeted = new Map<string, boolean>();
 const retreatEnteredAt = new Map<string, number>();
 const retreatCooldownUntil = new Map<string, number>();
+const burnAccum = new Map<string, number>(); // incendiary DoT accumulated since the last applied chunk
+const shotCount = new Map<string, number>(); // for the burning-accuracy penalty (every third shot misses)
 
 let lastConvergeCalloutAt = 0;
 let lastDangerAlertAt = 0;
@@ -96,11 +100,30 @@ const ALL_BOOKKEEPING = [
   wasTargeted,
   retreatEnteredAt,
   retreatCooldownUntil,
+  burnAccum,
+  shotCount,
 ];
 
-function clampBearing(deg: number): number {
-  return Math.max(-179, Math.min(179, deg));
+/** Wrap any angle to (-180, 180]. */
+function wrapDeg(deg: number): number {
+  return ((deg + 540) % 360) - 180;
 }
+
+/** Shortest signed difference a - b, in degrees. */
+function angleDiff(a: number, b: number): number {
+  return wrapDeg(a - b);
+}
+
+/**
+ * Every `Enemy.bearing` is RELATIVE to the nose and has already been shifted by
+ * -delta when the pilot turns; the cached relative goals must follow, or the
+ * squad would silently "turn with" the pilot and drift back in front of them.
+ */
+bus.on("player:turned", ({ delta }) => {
+  for (const map of [roleBearing, breakBearing]) {
+    for (const [id, goal] of map) map.set(id, wrapDeg(goal - delta));
+  }
+});
 
 function clampToCanopy(deg: number, limit: number): number {
   return Math.max(-limit, Math.min(limit, deg));
@@ -148,9 +171,9 @@ function withCoordination(enemy: Enemy, target: number): number {
   );
   let adjusted = target;
   for (const other of others) {
-    if (Math.abs(adjusted - other.bearing) < CONVERGE_BEARING_GAP && enemy.id > other.id) {
-      const away = adjusted >= other.bearing ? 1 : -1;
-      adjusted = clampToCanopy(adjusted + away * CONVERGE_BEARING_GAP, CANOPY_BEARING_MAX);
+    if (Math.abs(angleDiff(adjusted, other.bearing)) < CONVERGE_BEARING_GAP && enemy.id > other.id) {
+      const away = angleDiff(adjusted, other.bearing) >= 0 ? 1 : -1;
+      adjusted = wrapDeg(adjusted + away * CONVERGE_BEARING_GAP);
     }
   }
   return adjusted;
@@ -195,6 +218,22 @@ function tickOne(enemy: Enemy, dt: number, now: number): void {
     return;
   }
 
+  // Incendiary burn: damage over time in 0.5 s chunks (one fx:hit per chunk, not per frame),
+  // then the fields clear. Applies to the ace too, before boss.ts takes over its behaviour.
+  if (enemy.burningUntil !== undefined && enemy.burnDps !== undefined) {
+    const acc = (burnAccum.get(enemy.id) ?? 0) + enemy.burnDps * dt;
+    const expired = now >= enemy.burningUntil;
+    if (acc >= enemy.burnDps * BURN_CHUNK_S || expired) {
+      burnAccum.delete(enemy.id);
+      if (acc > 0) game.get().damageEnemy(enemy.id, acc);
+      if (expired) game.get().updateEnemy(enemy.id, { burningUntil: undefined, burnDps: undefined });
+      const after = game.get().enemies.find((e) => e.id === enemy.id);
+      if (!after || after.state === "DESTROYED") return;
+    } else {
+      burnAccum.set(enemy.id, acc);
+    }
+  }
+
   // boss.ts owns all live-CRIMSON behavior; this FSM only clears its wreck once destroyed (handled above).
   if (enemy.kind === "CRIMSON") return;
 
@@ -234,7 +273,9 @@ function tickOne(enemy: Enemy, dt: number, now: number): void {
     phaseUntil.set(enemy.id, phaseEnd);
     const jinkMag = JINK_MIN_DEG + Math.random() * (JINK_MAX_DEG - JINK_MIN_DEG);
     const jink = Math.random() < 0.5 ? -jinkMag : jinkMag;
-    breakBearing.set(enemy.id, clampToCanopy(enemy.bearing + jink, BREAK_BEARING_MAX));
+    // Jink relative to where it is now, but never further off the nose than the break cap allows.
+    const jinkGoal = enemy.bearing + jink;
+    breakBearing.set(enemy.id, Math.abs(jinkGoal) > BREAK_BEARING_MAX && Math.abs(jinkGoal) > Math.abs(enemy.bearing) ? enemy.bearing - jink : wrapDeg(jinkGoal));
     windupUntil.delete(enemy.id); // being shot at cancels a telegraphed shot in favor of breaking off
   }
 
@@ -249,7 +290,7 @@ function tickOne(enemy: Enemy, dt: number, now: number): void {
     case "APPROACH": {
       speed = REPOSITION_SPEED;
       ease = BEARING_EASE_APPROACH;
-      const arrived = Math.abs(enemy.distance - distGoal) <= 6 && Math.abs(enemy.bearing - bearingGoalRole) <= 6;
+      const arrived = Math.abs(enemy.distance - distGoal) <= 6 && Math.abs(angleDiff(enemy.bearing, bearingGoalRole)) <= 6;
       if (arrived || now >= phaseEnd) {
         phase = "HOLD";
         phaseEnd = now + HOLD_MS[role];
@@ -296,7 +337,8 @@ function tickOne(enemy: Enemy, dt: number, now: number): void {
     ease = 0;
   }
 
-  const bearing = clampBearing(enemy.bearing + (bearingGoal - enemy.bearing) * Math.min(1, dt * ease));
+  // Ease along the short way round so a goal behind the pilot never drags the unit across the nose.
+  const bearing = wrapDeg(enemy.bearing + angleDiff(bearingGoal, enemy.bearing) * Math.min(1, dt * ease));
   let distance = enemy.distance;
   if (speed > 0 && Math.abs(distance - distGoal) > 0.5) {
     const dir = distGoal > distance ? 1 : -1;
@@ -320,7 +362,7 @@ function tickOne(enemy: Enemy, dt: number, now: number): void {
   // Flanker reads as FLANK on the radar while it's still sweeping to its committed wide bearing,
   // and only becomes a firing ATTACK threat once it has actually arrived and held there.
   if (role === "FLANKER" && (state === "ATTACK" || state === "FLANK")) {
-    const stillSweeping = phase === "APPROACH" && Math.abs(enemy.bearing - persistentBearing) > FLANKER_SETTLE_DEG;
+    const stillSweeping = phase === "APPROACH" && Math.abs(angleDiff(enemy.bearing, persistentBearing)) > FLANKER_SETTLE_DEG;
     state = stillSweeping ? "FLANK" : "ATTACK";
   }
 
@@ -342,12 +384,17 @@ function tickOne(enemy: Enemy, dt: number, now: number): void {
     const closeAt = windupUntil.get(enemy.id) ?? now;
     if (now >= closeAt) {
       windupUntil.delete(enemy.id);
+      const shots = (shotCount.get(enemy.id) ?? 0) + 1;
+      shotCount.set(enemy.id, shots);
+      game.get().updateEnemy(enemy.id, { lastFireAt: now });
+      // Burning units lose ~30% accuracy: every third shot goes wide.
+      if (enemy.burningUntil !== undefined && shots % 3 === 0) return;
       const damage =
         role === "AGGRESSOR" ? 5 + Math.random() * 6 : role === "SUPPRESSOR" ? 3 + Math.random() * 4 : 4 + Math.random() * 5;
       game.get().damagePlayer(damage, enemy.bearing);
-      game.get().updateEnemy(enemy.id, { lastFireAt: now });
     }
     return;
+
   }
 
   if (phase !== "BREAK" && now - enemy.lastFireAt >= FIRE_COOLDOWN_MS[role]) {

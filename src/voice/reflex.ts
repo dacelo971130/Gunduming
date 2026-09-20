@@ -111,6 +111,9 @@ type WeaponSelection = WeaponId | "NEXT" | "PREVIOUS";
  * Named weapons win over "next/previous" so "switch weapon to cannon" is CANNON.
  *
  *   CANNON   cannon(s) · canon · heavy cannon · heavy gun · big gun
+ *   NUKE     nuke(s) · nuclear · warhead · "fire the nuke"
+ *   INCENDIARY incendiary · fire bomb(s) · firebomb · napalm · thermite · "burn them/it"
+ *   FLEET_CANNON fire support · call (in) the fleet · fleet · battleship · fire mission · orbital · artillery
  *   MISSILE  missile(s) · missle(s) · missile pod · rocket(s)
  *   BLADE    blade(s) · sword(s) · melee · saber/sabre
  *   RIFLE    rifle(s) · riffle · linear (rifle)
@@ -118,6 +121,9 @@ type WeaponSelection = WeaponId | "NEXT" | "PREVIOUS";
  *   NEXT     next/swap/change/switch/cycle/other/another weapon(s)/gun(s)/loadout · switch weapons
  */
 function parseWeapon(text: string): WeaponSelection | null {
+  if (/\b(nukes?|nuclear|warhead)\b/.test(text)) return "NUKE";
+  if (/\b(incendiar(y|ies)|fire ?bombs?|napalm|thermite)\b/.test(text) || /\bburn (them|it|him|everything|the (group|lot))\b/.test(text)) return "INCENDIARY";
+  if (/\b(fleet|battleship|fire support|fire mission|orbital|artillery|naval gun)\b/.test(text)) return "FLEET_CANNON";
   if (/\b(cannons?|canon|heavy gun|big gun)\b/.test(text)) return "CANNON";
   if (/\b(missiles?|missles?|rockets?)\b/.test(text)) return "MISSILE";
   if (/\b(blades?|swords?|melee|saber|sabre)\b/.test(text)) return "BLADE";
@@ -133,7 +139,7 @@ function parseWeapon(text: string): WeaponSelection | null {
 }
 
 /** Fire verbs that make sense with a weapon noun ("launch missiles", "blade strike"). */
-const WEAPON_FIRE_VERB = /\b(fire|attack|shoot|engage|launch|strike|slash|cut|swing|hit)\b/;
+const WEAPON_FIRE_VERB = /\b(fire|attack|shoot|engage|launch|strike|slash|cut|swing|hit|drop|release|call|burn)\b/;
 
 function currentWeapon(): WeaponId | null {
   try {
@@ -141,6 +147,28 @@ function currentWeapon(): WeaponId | null {
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ turning */
+
+const FACE_VERB = /\b(face|look at|point at|turn to|turn towards?|turn toward|aim at)\b/;
+const TURN_VERB = /\b(turn|rotate)\b|\bswing (around|left|right)\b/;
+const SELECTOR_WORD = /\b(red|crimson|ace|boss|strongest|biggest|weakest|damaged|nearest|closest|farthest|furthest|left|right|front|ahead|behind|rear)\b/;
+
+function parseTurn(text: string): GameCommand | null {
+  if (FACE_VERB.test(text)) {
+    if (SELECTOR_WORD.test(text) && !/\bturn (left|right)\b/.test(text)) {
+      return { action: "LOCK_TARGET", target: parseSelector(text) };
+    }
+    return { action: "TURN", direction: "TARGET" };
+  }
+  if (!TURN_VERB.test(text)) return null;
+  if (/\baround\b|\babout\b/.test(text)) return { action: "TURN", direction: "RIGHT", degrees: 180 };
+  const num = text.match(/\b(\d{1,3})\b/);
+  const degrees = num ? Math.max(1, Math.min(180, Number(num[1]))) : undefined;
+  if (/\bleft\b/.test(text)) return degrees ? { action: "TURN", direction: "LEFT", degrees } : { action: "TURN", direction: "LEFT" };
+  if (/\bright\b/.test(text)) return degrees ? { action: "TURN", direction: "RIGHT", degrees } : { action: "TURN", direction: "RIGHT" };
+  return { action: "TURN", direction: "TARGET" };
 }
 
 /* ------------------------------------------------------------------ match */
@@ -193,6 +221,13 @@ export function matchReflex(text: string): GameCommand | null {
   ) {
     return { action: "RETREAT" };
   }
+
+  // TURN — aiming. "face the target" / "look at it" faces the lock (nearest if
+  // none); with a selector word ("look at the red one", "face the one on the
+  // left") it becomes a LOCK, because a lock auto-faces its target. "turn left
+  // 45" turns by degrees; "turn around" is 180; bare "turn" faces the target.
+  const turnCmd = parseTurn(norm);
+  if (turnCmd) return turnCmd;
 
   // SWITCH_WEAPON — a weapon noun anywhere in the phrase selects that weapon.
   // "fire the cannon" while the cannon is already up is an ATTACK; while another

@@ -57,7 +57,7 @@ function missionLine(): string {
 function loadoutLine(): string {
   const name = weaponSpec(game.get().player.weapon).name.toLowerCase();
   const selected = name.charAt(0).toUpperCase() + name.slice(1);
-  return `${selected} selected. Say cannon, missiles, or blade to switch weapons.`;
+  return `${selected} selected. Say cannon, missiles, blade, incendiary or nuke to switch — or call the fleet.`;
 }
 
 /* ------------------------------------------------------------- per-phase */

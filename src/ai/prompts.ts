@@ -11,20 +11,29 @@ import type { AdviceTrigger } from "./advisor";
 function loadoutDoctrine(): string {
   const table = WEAPONS.map((w) => {
     const extras = [
+      w.kind,
       `dmg ${w.damage}`,
       `heat ${w.heat}`,
       `energy ${w.energy}`,
       w.maxRange !== null ? `max range ${w.maxRange} m` : "unlimited range",
+      w.minRange !== undefined ? `MIN range ${w.minRange} m` : null,
       w.splashDeg > 0 ? `cone ±${w.splashDeg}°` : "single target",
-    ].join(", ");
+      w.ammo !== null ? `${w.ammo} per mission` : null,
+      w.cooldownMs > 0 ? `${Math.round(w.cooldownMs / 1000)} s reload` : null,
+      w.burn ? `burns ${w.burn.dps}/s for ${w.burn.ms / 1000} s` : null,
+      w.delayMs ? `${w.delayMs / 1000} s to impact` : null,
+    ]
+      .filter((x): x is string => x !== null)
+      .join(", ");
     return `${w.id} (${w.name}) — ${w.role} [${extras}]`;
   }).join("; ");
   const blade = weaponSpec("BLADE");
   const missile = weaponSpec("MISSILE");
+  const nuke = weaponSpec("NUKE");
   return [
-    `LOADOUT: the ${PLAYER_MECH} carries one selected weapon at a time (the PLAYER line shows "weapon"). ${table}.`,
-    `DOCTRINE: RIFLE is the default and never wrong. CANNON for exposed weak points (the weak-point-open flag — cannon does 1.8× there) and for the armored ace ${BOSS_NAME}. MISSILE when three or more contacts sit inside a ±${missile.splashDeg}° cone within ${missile.maxRange} m — the six-round salvo hits all of them. BLADE only inside ${blade.maxRange} m: devastating there, a denied shot beyond it. Always compare the target's dist against the weapon's max range before recommending it.`,
-    `When the pilot names a weapon, or asks by role ("something heavier", "close-quarters", "anti-armor", "something for the group"), call switch_weapon — and also call attack if they asked to fire. Offer a switch in one short clause when the snapshot calls for it, e.g. "Blade range — close in and switch to the blade."`,
+    `LOADOUT: the ${PLAYER_MECH} carries one selected weapon at a time (the PLAYER line shows "weapon", plus ammo left and reload timers). ${table}.`,
+    `DOCTRINE: RIFLE is the default and never wrong. CANNON for exposed weak points (the weak-point-open flag — cannon does 1.8× there) and for the armored ace ${BOSS_NAME}. MISSILE when three or more contacts sit inside a ±${missile.splashDeg}° cone within ${missile.maxRange} m — the six-round salvo hits all of them. BLADE only inside ${blade.maxRange} m: devastating there, a denied shot beyond it. INCENDIARY against groups — everything in its cone keeps burning and shoots worse. NUKE only when three or more contacts are ALL beyond ${nuke.minRange} m and the pilot has the warhead left; inside ${nuke.minRange} m the release is denied. FLEET_CANNON when the pilot is overwhelmed or the ace is staggered with its weak point open; shells take 3 s to land, then a 45 s reload. Naming a support or ordnance weapon and asking to fire is one request: switch_weapon then attack (naming the fleet by itself already calls the fire mission). Always compare the target's dist against the weapon's range limits before recommending it.`,
+    `When the pilot names a weapon, or asks by role ("something heavier", "close-quarters", "anti-armor", "something for the group", "wipe them out", "call the fleet"), call switch_weapon — and also call attack if they asked to fire. Offer a switch in one short clause when the snapshot calls for it, e.g. "Blade range — close in and switch to the blade."`,
   ].join(" ");
 }
 
@@ -35,6 +44,7 @@ export function buildSystemPrompt(): string {
     `FACTS: report only what is in the tactical snapshot given to you — real numbers, real bearings, real codenames. Never invent an enemy that is not listed there. This is an original setting — never say Gundam, Zaku, Char, Haro, or any other outside franchise, character, or IP name.`,
     `BEHAVIOR: when the pilot gives an order, acknowledge it in one short clause and call the matching tool so the ship actually executes it. When the pilot asks a question ("how long can we hold?", "where are they?", "what is that thing?"), answer by judging the snapshot — hp, armor, enemy count, threat level — rather than just reading numbers back. If an order is tactically unsafe, say so briefly and still call the tool — the pilot commands, you advise.`,
     loadoutDoctrine(),
+    `AIMING: enemy bearings in the snapshot are RELATIVE to the nose (0 = dead ahead, positive = right, ±180 = behind); PLAYER bearing is the absolute heading. The mech turns: call turn with LEFT/RIGHT (degrees, default 30) or TARGET to face the locked target. lock_target auto-faces anything more than 12 degrees off the nose. Weapons only bear on what is near the nose, so if the pilot complains about aiming or a contact is far off-bore, turn to it.`,
     "Call at most one tool per pilot turn unless the pilot clearly asked for more than one action (switching weapons and then firing counts as one request — call switch_weapon, then attack).",
   ].join("\n\n");
 }
@@ -55,6 +65,12 @@ const ADVICE_INSTRUCTIONS: Record<AdviceTrigger, string> = {
     "An enemy weak point just opened while the heavy cannon is NOT selected. Recommend switching to the cannon and firing before the opening closes.",
   MISSILE_CLUSTER:
     "Three or more hostiles are bunched inside the missile pod's cone while another weapon is selected. Recommend switching to missiles and firing one salvo at the group.",
+  NUKE_WINDOW:
+    "Three or more hostiles are all beyond the nuke's 450 m safety minimum and the warhead is still available. Suggest the tactical nuke in one line — and remind the pilot it is the only one.",
+  FLEET_WINDOW:
+    "Either the pilot is outnumbered and below half integrity, or the ace is staggered with its weak point open — and the fleet cannon is reloaded. Suggest calling the fleet fire mission in one line.",
+  TARGET_OFF_NOSE:
+    "The locked target has been well off the nose (more than 40 degrees) for a couple of seconds. Tell the pilot where it is as a clock position and which way to turn, in one short line.",
 };
 
 /** System prompt for a proactive one-line callout, keyed by trigger. */
@@ -63,6 +79,16 @@ export function buildAdvicePrompt(trigger: AdviceTrigger): string {
     buildSystemPrompt(),
     `PROACTIVE CALLOUT — ${trigger}: ${ADVICE_INSTRUCTIONS[trigger]} Speak one line only. This is an unprompted callout, not a response to an order — do not call a tool.`,
   ].join("\n\n");
+}
+
+/** " | ammo INC 4 NUK 1 | reload FLT 31s" — only the weapons that have such state. */
+function ammoAndReloads(player: GameSnapshot["player"]): string {
+  const now = Date.now();
+  const ammo = WEAPONS.filter((w) => w.ammo !== null).map((w) => `${w.tag} ${player.ammo?.[w.id] ?? w.ammo}`);
+  const reloads = WEAPONS.filter((w) => (player.weaponReadyAt?.[w.id] ?? 0) > now).map(
+    (w) => `${w.tag} ${Math.ceil(((player.weaponReadyAt?.[w.id] ?? now) - now) / 1000)}s`,
+  );
+  return `${ammo.length ? ` | ammo ${ammo.join(" ")}` : ""}${reloads.length ? ` | reload ${reloads.join(" ")}` : ""}`;
 }
 
 /** Compact, terse serialization of the world state — not a raw JSON dump. */
@@ -75,7 +101,7 @@ export function serializeSnapshot(snapshot: GameSnapshot): string {
   );
   const weapon = weaponSpec(player.weapon);
   lines.push(
-    `PLAYER hp ${Math.round(player.hp)}/${player.maxHp} armor ${Math.round(player.armor)} energy ${Math.round(player.energy)} boost ${Math.round(player.boost)} heat ${Math.round(player.heat)} stance ${player.stance} bearing ${Math.round(player.bearing)} special ${Math.round(player.special)} weapon ${weapon.id}${weapon.maxRange !== null ? ` (max ${weapon.maxRange}m)` : ""}`,
+    `PLAYER hp ${Math.round(player.hp)}/${player.maxHp} armor ${Math.round(player.armor)} energy ${Math.round(player.energy)} boost ${Math.round(player.boost)} heat ${Math.round(player.heat)} stance ${player.stance} bearing ${Math.round(player.bearing)} special ${Math.round(player.special)} weapon ${weapon.id}${weapon.maxRange !== null ? ` (max ${weapon.maxRange}m)` : ""}${ammoAndReloads(player)}`,
   );
 
   if (enemies.length === 0) {

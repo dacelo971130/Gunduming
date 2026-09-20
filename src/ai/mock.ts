@@ -45,6 +45,9 @@ type WeaponSelection = WeaponId | "NEXT" | "PREVIOUS";
  * "something for the group", "go back to the standard gun".
  */
 function pickWeapon(text: string): WeaponSelection | null {
+  if (/\bnukes?\b|\bnuclear\b|\bwarhead\b|\bwipe them (all )?out\b|\bbiggest (thing|gun) (we|you) (have|got)\b/.test(text)) return "NUKE";
+  if (/\bincendiar(y|ies)\b|\bfire ?bombs?\b|\bnapalm\b|\bthermite\b|\bburn (them|it|him|everything)\b|\bset (them|it) on fire\b|\blight them up\b/.test(text)) return "INCENDIARY";
+  if (/\bfleet\b|\bbattleship\b|\bfire support\b|\bfire mission\b|\borbital\b|\bartillery\b|\bnaval\b|\bcall (in )?(the )?(ship|support|big guns)\b|\bbring (in|down) the (ship|fleet|rain)\b/.test(text)) return "FLEET_CANNON";
   if (
     /\bcannons?\b|\bcanon\b|\bheav(y|ier|iest)\b|\bbig(ger|gest)? gun\b|\bmore punch\b|\banti[- ]?armou?r\b|\barmou?r[- ]?(break|pierc|bust)\w*\b|\bbreak (the |its |his )?(armou?r|shield)\b|\bhard(er|est)?[- ]hitting\b|\bsomething (big|strong)\w*\b/.test(text)
   ) {
@@ -81,6 +84,9 @@ const WEAPON_ROLE_LINE: Record<WeaponId, string> = {
   CANNON: "Slow, but it breaks armor.",
   MISSILE: "Six rounds, everything in the cone.",
   BLADE: "Devastating inside two-sixty meters.",
+  INCENDIARY: "Everything in the cone burns for six seconds.",
+  NUKE: "One warhead. Nothing inside four-fifty meters.",
+  FLEET_CANNON: "Battleship shells, three seconds out.",
 };
 
 /** Doctrine pick from the snapshot — what ECHO-01 would reach for right now, and why. */
@@ -90,6 +96,18 @@ function recommendWeapon(snapshot: GameSnapshot): { weapon: WeaponId; reason: st
   const blade = weaponSpec("BLADE");
   const missile = weaponSpec("MISSILE");
 
+  const nuke = weaponSpec("NUKE");
+  const nukeLeft = snapshot.player.ammo?.NUKE ?? nuke.ammo ?? 0;
+  const farGroup = enemies.length >= 3 && enemies.every((e) => e.distance >= (nuke.minRange ?? 450));
+  if (nukeLeft > 0 && farGroup) {
+    return { weapon: "NUKE", reason: ` contacts all beyond  meters — one warhead takes the lot` };
+  }
+  const fleetReady = (snapshot.player.weaponReadyAt?.FLEET_CANNON ?? 0) <= Date.now();
+  const staggeredAce = enemies.find((e) => e.kind === "CRIMSON" && (e.weakPointOpen || e.state === "STAGGERED"));
+  const overwhelmed = enemies.length >= 3 && snapshot.player.hp / snapshot.player.maxHp < 0.5;
+  if (fleetReady && (staggeredAce || overwhelmed)) {
+    return { weapon: "FLEET_CANNON", reason: staggeredAce ? ` is staggered — fleet shells would land on an open target` : "we are outnumbered and hurt; the fleet can thin them out" };
+  }
   if (target && blade.maxRange !== null && target.distance <= blade.maxRange) {
     return { weapon: "BLADE", reason: `${target.codename} is at ${target.distance} meters, inside blade range` };
   }
@@ -157,6 +175,30 @@ export function mockReply(transcript: string, snapshot: GameSnapshot): CopilotRe
   } else if (weaponSel) {
     commands.push({ action: "SWITCH_WEAPON", weapon: weaponSel });
     speech = switchSpeech(weaponSel, snapshot);
+  } else if (/\b(face|look at|aim at|point at|turn to|turn towards?)\b/.test(text) && !/\bturn (left|right)\b/.test(text)) {
+    if (/\b(red|crimson|ace|boss|strongest|weakest|nearest|closest|farthest|furthest|left|right|rear|behind|front|ahead)\b/.test(text)) {
+      commands.push({ action: "LOCK_TARGET", target: pickTargetSelector(text) });
+      speech = "Locking and turning to face, Pilot.";
+    } else {
+      commands.push({ action: "TURN", direction: "TARGET" });
+      speech = "Turning to face the target, Pilot.";
+    }
+  } else if (/\bturn\b|\brotate\b|\bswing\b|\bcome (left|right|about)\b|\bbring (us|it|the nose) (around|left|right)\b/.test(text)) {
+    const num = text.match(/\b(\d{1,3})\b/);
+    const degrees = num ? Math.max(1, Math.min(180, Number(num[1]))) : undefined;
+    if (/\baround\b|\babout\b|\bbehind\b/.test(text)) {
+      commands.push({ action: "TURN", direction: "RIGHT", degrees: 180 });
+      speech = "Coming about, Pilot.";
+    } else if (/\bleft\b|\bport\b/.test(text)) {
+      commands.push(degrees ? { action: "TURN", direction: "LEFT", degrees } : { action: "TURN", direction: "LEFT" });
+      speech = "Turning left, Pilot.";
+    } else if (/\bright\b|\bstarboard\b/.test(text)) {
+      commands.push(degrees ? { action: "TURN", direction: "RIGHT", degrees } : { action: "TURN", direction: "RIGHT" });
+      speech = "Turning right, Pilot.";
+    } else {
+      commands.push({ action: "TURN", direction: "TARGET" });
+      speech = "Turning onto the target, Pilot.";
+    }
   } else if (/\banaly[sz]e\b/.test(text)) {
     commands.push({ action: "ANALYZE", target: pickTargetSelector(text) });
     speech = "Analyzing target now, Pilot.";

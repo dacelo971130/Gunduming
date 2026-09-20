@@ -42,6 +42,19 @@ interface BossState {
 
 let boss: BossState | null = null;
 
+/** Wrap any angle to (-180, 180]. */
+function wrapDeg(deg: number): number {
+  return ((deg + 540) % 360) - 180;
+}
+
+// Enemy bearings are relative to the nose; when the pilot turns, the in-flight
+// flank swing endpoints must shift with them or the ace would track the turn.
+bus.on("player:turned", ({ delta }) => {
+  if (!boss) return;
+  boss.flankStartBearing = wrapDeg(boss.flankStartBearing - delta);
+  boss.flankTargetBearing = wrapDeg(boss.flankTargetBearing - delta);
+});
+
 function findBoss(): Enemy | null {
   return game.get().enemies.find((e) => e.kind === "CRIMSON" && e.state !== "DESTROYED") ?? null;
 }
@@ -49,9 +62,9 @@ function findBoss(): Enemy | null {
 function beginFlank(enemy: Enemy, now: number): void {
   if (!boss) return;
   const store = game.get();
-  // Swing to the far edge of the canopy on the opposite side (the glass shows
-  // ±35° and the pilot can't turn — going behind would make the ace vanish).
-  const magnitude = 26 + Math.random() * 7; // 26..33 degrees
+  // Swing wide to the opposite side — well off the glass, so the pilot has to
+  // turn (arrows / "face the target") to bring the ace back onto the nose.
+  const magnitude = 45 + Math.random() * 15; // 45..60 degrees
   const sign = enemy.bearing >= 0 ? -1 : 1; // swing to the opposite side for a clean flank
   const targetBearing = sign * magnitude;
   boss.flankStartBearing = enemy.bearing;
@@ -151,7 +164,7 @@ export function tickBoss(dt: number): void {
     } else if (damageSinceLast > 0 && Math.random() < 0.3) {
       // A lighter hit sometimes provokes a quick evasive jink.
       const jinked = enemy.bearing + (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 10);
-      store.updateEnemy(enemy.id, { bearing: Math.max(-33, Math.min(33, jinked)) });
+      store.updateEnemy(enemy.id, { bearing: wrapDeg(jinked) });
     }
     boss.lastHp = enemy.hp;
 

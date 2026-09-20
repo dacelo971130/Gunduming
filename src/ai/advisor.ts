@@ -23,7 +23,10 @@ export type AdviceTrigger =
   | "IDLE_CHECK"
   | "BLADE_RANGE"
   | "CANNON_OPENING"
-  | "MISSILE_CLUSTER";
+  | "MISSILE_CLUSTER"
+  | "TARGET_OFF_NOSE"
+  | "NUKE_WINDOW"
+  | "FLEET_WINDOW";
 
 /** Hand-written fallback line per trigger, used whenever the LLM is unavailable. */
 export const ADVICE_FALLBACK_LINES: Record<AdviceTrigger, string> = {
@@ -36,7 +39,17 @@ export const ADVICE_FALLBACK_LINES: Record<AdviceTrigger, string> = {
   BLADE_RANGE: "Target inside blade range, Pilot. Switch to the plasma blade and finish it.",
   CANNON_OPENING: "Weak point exposed. The heavy cannon would break it — switch and fire before it closes.",
   MISSILE_CLUSTER: "Three or more contacts bunched in the cone, Pilot. One missile salvo would hit them all.",
+  TARGET_OFF_NOSE: "Target is off your nose, Pilot. Turn to face it.",
+  NUKE_WINDOW: "Three contacts, all outside the safety minimum, Pilot. The warhead is available — say nuke. It is the only one.",
+  FLEET_WINDOW: "Fleet cannon is ready, Pilot. Call the fire mission — shells land in three seconds.",
 };
+
+/** "Target at your 2 o'clock, turn right." — clock position from a relative bearing. */
+export function offNoseLine(codename: string, relativeBearing: number): string {
+  const hour = ((Math.round(relativeBearing / 30) + 12) % 12) || 12;
+  const side = relativeBearing >= 0 ? "right" : "left";
+  return `${codename} at your ${hour} o'clock, turn ${side}.`;
+}
 
 const RATE_LIMIT_MS = 8000;
 const ADVICE_TIMEOUT_MS = 5000;
@@ -89,6 +102,9 @@ const WEAPON_ADVICE_POLL_MS = 400;
 /** Per-trigger quiet period on top of requestAdvice's global 8s limit. */
 const WEAPON_ADVICE_COOLDOWN_MS = 20000;
 const WEAPON_ADVICE_PHASES = new Set<Phase>(["COMBAT", "BOSS"]);
+/** Locked target more than this far off the nose, for at least this long, earns a clock-position callout. */
+const OFF_NOSE_DEG = 40;
+const OFF_NOSE_HOLD_MS = 2000;
 
 function bearingDelta(a: number, b: number): number {
   return ((a - b + 540) % 360) - 180;
@@ -111,6 +127,10 @@ export function startWeaponAdvisor(): () => void {
   const lastFiredAt: Partial<Record<AdviceTrigger, number>> = {};
   let bladeArmed = true;
   let clusterArmed = true;
+  let offNoseArmed = true;
+  let nukeArmed = true;
+  let fleetArmed = true;
+  let offNoseSince = 0;
   const calledOpenings = new Set<string>();
   let inFlight = false;
 
@@ -120,7 +140,7 @@ export function startWeaponAdvisor(): () => void {
    * flight) so the moment is retried on a later tick instead of being lost;
    * the per-trigger cooldown only starts once a line was actually spoken.
    */
-  const callout = (trigger: AdviceTrigger, rearm: () => void): void => {
+  const callout = (trigger: AdviceTrigger, rearm: () => void, mockLine?: string): void => {
     if (Date.now() - (lastFiredAt[trigger] ?? 0) < WEAPON_ADVICE_COOLDOWN_MS) return;
     if (inFlight) {
       rearm();
@@ -130,7 +150,8 @@ export function startWeaponAdvisor(): () => void {
     requestAdvice(trigger, game.snapshot())
       .then((speech) => {
         if (speech) {
-          say(speech);
+          // The hand-written fallback is generic; when that is what came back, prefer the live-computed line.
+          say(mockLine && speech === ADVICE_FALLBACK_LINES[trigger] ? mockLine : speech);
           lastFiredAt[trigger] = Date.now();
         } else {
           rearm();
@@ -194,9 +215,54 @@ export function startWeaponAdvisor(): () => void {
       } else {
         clusterArmed = true;
       }
+      // 5. Nuke window: 3+ contacts all beyond the safety minimum, warhead in hand, nuke not selected.
+      const nuke = weaponSpec("NUKE");
+      const nukeLeft = s.player.ammo?.NUKE ?? nuke.ammo ?? 0;
+      const nukeWindow = nukeLeft > 0 && living.length >= 3 && living.every((e) => e.distance >= (nuke.minRange ?? 450));
+      if (nukeWindow) {
+        if (nukeArmed && weapon !== "NUKE") {
+          nukeArmed = false;
+          callout("NUKE_WINDOW", () => {
+            nukeArmed = true;
+          });
+        }
+      } else {
+        nukeArmed = true;
+      }
+
+      // 6. Fleet window: reloaded, and either overwhelmed or the ace is staggered.
+      const fleetReady = (s.player.weaponReadyAt?.FLEET_CANNON ?? 0) <= Date.now();
+      const staggeredAce = living.some((e) => e.kind === "CRIMSON" && (e.weakPointOpen || e.state === "STAGGERED"));
+      const overwhelmed = living.length >= 3 && s.player.hp / s.player.maxHp < 0.5;
+      if (fleetReady && (staggeredAce || overwhelmed)) {
+        if (fleetArmed && weapon !== "FLEET_CANNON") {
+          fleetArmed = false;
+          callout("FLEET_WINDOW", () => {
+            fleetArmed = true;
+          });
+        }
+      } else {
+        fleetArmed = true;
+      }
+
+      // 4. Locked target well off the nose for a couple of seconds — say where and which way.
+      if (target && Math.abs(target.bearing) > OFF_NOSE_DEG) {
+        if (offNoseSince === 0) offNoseSince = Date.now();
+        if (offNoseArmed && Date.now() - offNoseSince >= OFF_NOSE_HOLD_MS) {
+          offNoseArmed = false;
+          const line = offNoseLine(target.codename, target.bearing);
+          callout("TARGET_OFF_NOSE", () => {
+            offNoseArmed = true;
+          }, line);
+        }
+      } else {
+        offNoseSince = 0;
+        offNoseArmed = true;
+      }
     } catch (err) {
       console.error("[ai/advisor] weapon advisor tick threw", err);
     }
+
   };
 
   const timer = window.setInterval(tick, WEAPON_ADVICE_POLL_MS);

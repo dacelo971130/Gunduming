@@ -54,6 +54,12 @@ function isBoostDirection(v: unknown): v is BoostDirection {
   return typeof v === "string" && (BOOST_DIRECTIONS as readonly string[]).includes(v);
 }
 
+const TURN_DIRECTIONS = ["LEFT", "RIGHT", "TARGET"] as const;
+type TurnDirection = (typeof TURN_DIRECTIONS)[number];
+function isTurnDirection(v: unknown): v is TurnDirection {
+  return typeof v === "string" && (TURN_DIRECTIONS as readonly string[]).includes(v);
+}
+
 const WEAPON_CHOICES = [...WEAPONS.map((w) => w.id), "NEXT", "PREVIOUS"] as const;
 type WeaponChoice = (typeof WEAPON_CHOICES)[number];
 function isWeaponChoice(v: unknown): v is WeaponChoice {
@@ -112,6 +118,19 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
       type: "object",
       properties: { weapon: WEAPON_SCHEMA },
       required: ["weapon"],
+    },
+  },
+  {
+    name: "turn",
+    description:
+      "Rotate the mech to aim. LEFT/RIGHT by `degrees` (default 30), or TARGET to face the locked target (nearest if none) so its relative bearing becomes 0. lock_target already auto-faces a target more than 12 degrees off the nose.",
+    input_schema: {
+      type: "object",
+      properties: {
+        direction: { type: "string", enum: [...TURN_DIRECTIONS], description: "LEFT, RIGHT, or TARGET (face the locked target)." },
+        degrees: { type: "number", description: "How far to turn for LEFT/RIGHT, 1-180. Ignored for TARGET." },
+      },
+      required: ["direction"],
     },
   },
   {
@@ -185,6 +204,11 @@ export function commandFromToolUse(name: string, rawInput: unknown): GameCommand
     }
     case "switch_weapon":
       return isWeaponChoice(input.weapon) ? { action: "SWITCH_WEAPON", weapon: input.weapon } : null;
+    case "turn": {
+      if (!isTurnDirection(input.direction)) return null;
+      const degrees = typeof input.degrees === "number" && Number.isFinite(input.degrees) ? Math.abs(input.degrees) : undefined;
+      return degrees !== undefined ? { action: "TURN", direction: input.direction, degrees } : { action: "TURN", direction: input.direction };
+    }
     case "defend":
       return { action: "DEFEND" };
     case "evade":
